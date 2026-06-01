@@ -1,0 +1,3193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KYPorra 2026 — La Porra del Mundial</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080c1a; color: #f0f0f0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+  input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const { useState, useEffect, useCallback, useMemo } = React;
+
+// Simple icon components replacing lucide-react
+const _I = ({ch, size=16, style={}}) => <span style={{fontSize:size, lineHeight:1, ...style}}>{ch}</span>;
+const Trophy = (p) => _I({ch:"🏆",...p});
+const Users = (p) => _I({ch:"👥",...p});
+const Shield = (p) => _I({ch:"🛡",...p});
+const Mail = (p) => _I({ch:"📧",...p});
+const Check = (p) => _I({ch:"✓",...p});
+const X = (p) => _I({ch:"✕",...p});
+const Clock = (p) => _I({ch:"⏰",...p});
+const ChevronRight = (p) => _I({ch:"›",...p});
+const Star = (p) => _I({ch:"⭐",...p});
+const Zap = (p) => _I({ch:"⚡",...p});
+const Crown = (p) => _I({ch:"👑",...p});
+const LogOut = (p) => _I({ch:"↩",...p});
+const Eye = (p) => _I({ch:"👁",...p});
+const EyeOff = (p) => _I({ch:"🔒",...p});
+const Lock = (p) => _I({ch:"🔒",...p});
+const ChevronDown = (p) => _I({ch:"▾",...p});
+const ChevronUp = (p) => _I({ch:"▴",...p});
+const Award = (p) => _I({ch:"🎖",...p});
+const Goal = (p) => _I({ch:"⚽",...p});
+
+
+
+/* ═══════════════════════════════════════════
+   CONSTANTS & DATA
+   ═══════════════════════════════════════════ */
+
+const ADMIN_HASH = "434edeac9b2355b5a0cbfd46c700628c070f481c7b5ea4b79f7fa259807743e6";
+const INVITE_CODE = "KYPorra";
+
+async function checkAdminPass(pass) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pass);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  const hex = Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hex === ADMIN_HASH;
+}
+
+// Default points — can be overridden from Admin > Config (stored in Firebase)
+const DEFAULT_POINTS = {
+  exactScore: 4,
+  correctResult: 2,
+  exactDraw: 3,
+  drawNotExact: 2,
+  advancer: 1,
+  teamAdvancesGroup: 3,
+  teamExactPosition: 4,
+  champion: 20,
+  topScorer: 10,
+  mvp: 10,
+};
+
+function getPoints(realResults) {
+  return realResults?.customPoints || DEFAULT_POINTS;
+}
+
+// All deadlines in Madrid time (CEST = UTC+2)
+const DEADLINES = {
+  groups: "2026-06-11T21:00:00+02:00",     // Fase group + predicciones globales
+  r32:    "2026-06-28T21:00:00+02:00",      // Round of 32 + octavos (first R32 match)
+  quarters: "2026-07-09T19:00:00+02:00",    // Quarter-finals + semis + final (primer cuarto)
+};
+
+const DEADLINES_INFO = [
+  { key: "groups",   label: "Groups + champion/scorer/MVP", date: DEADLINES.groups },
+  { key: "r32",      label: "Round of 32 + octavos",               date: DEADLINES.r32 },
+  { key: "quarters", label: "Quarter-finals + semis + final",               date: DEADLINES.quarters },
+];
+
+function isLocked(deadlineKey) {
+  return new Date() > new Date(DEADLINES[deadlineKey]);
+}
+
+function formatDeadline(isoStr) {
+  return new Date(isoStr).toLocaleString("es-ES", {
+    day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", timeZone: "Europe/Madrid",
+  });
+}
+
+const TEAMS = {
+  MEX: { name: "Mexico", flag: "mx", code: "MEX" },
+  KOR: { name: "South Korea", flag: "kr", code: "KOR" },
+  RSA: { name: "South Africa", flag: "za", code: "RSA" },
+  CZE: { name: "Czechia", flag: "cz", code: "CZE" },
+  CAN: { name: "Canada", flag: "ca", code: "CAN" },
+  BIH: { name: "Bosnia", flag: "ba", code: "BIH" },
+  QAT: { name: "Qatar", flag: "qa", code: "QAT" },
+  SUI: { name: "Switzerland", flag: "ch", code: "SUI" },
+  BRA: { name: "Brasil", flag: "br", code: "BRA" },
+  MAR: { name: "Morocco", flag: "ma", code: "MAR" },
+  HAI: { name: "Haiti", flag: "ht", code: "HAI" },
+  SCO: { name: "Scotland", flag: "gb-sct", code: "SCO" },
+  USA: { name: "USA", flag: "us", code: "USA" },
+  PAR: { name: "Paraguay", flag: "py", code: "PAR" },
+  AUS: { name: "Australia", flag: "au", code: "AUS" },
+  TUR: { name: "Turquía", flag: "tr", code: "TUR" },
+  GER: { name: "Germany", flag: "de", code: "GER" },
+  ECU: { name: "Ecuador", flag: "ec", code: "ECU" },
+  CIV: { name: "Ivory Coast", flag: "ci", code: "CIV" },
+  CUR: { name: "Curaçao", flag: "cw", code: "CUR" },
+  NED: { name: "Netherlands", flag: "nl", code: "NED" },
+  JPN: { name: "Japan", flag: "jp", code: "JPN" },
+  SWE: { name: "Sweden", flag: "se", code: "SWE" },
+  TUN: { name: "Tunisia", flag: "tn", code: "TUN" },
+  BEL: { name: "Belgium", flag: "be", code: "BEL" },
+  EGY: { name: "Egypt", flag: "eg", code: "EGY" },
+  IRN: { name: "Iran", flag: "ir", code: "IRN" },
+  NZL: { name: "New Zealand", flag: "nz", code: "NZL" },
+  ESP: { name: "Spain", flag: "es", code: "ESP" },
+  URU: { name: "Uruguay", flag: "uy", code: "URU" },
+  KSA: { name: "Saudi Arabia", flag: "sa", code: "KSA" },
+  CPV: { name: "Cape Verde", flag: "cv", code: "CPV" },
+  FRA: { name: "France", flag: "fr", code: "FRA" },
+  SEN: { name: "Senegal", flag: "sn", code: "SEN" },
+  IRQ: { name: "Iraq", flag: "iq", code: "IRQ" },
+  NOR: { name: "Norway", flag: "no", code: "NOR" },
+  ARG: { name: "Argentina", flag: "ar", code: "ARG" },
+  ALG: { name: "Algeria", flag: "dz", code: "ALG" },
+  AUT: { name: "Austria", flag: "at", code: "AUT" },
+  JOR: { name: "Jordan", flag: "jo", code: "JOR" },
+  POR: { name: "Portugal", flag: "pt", code: "POR" },
+  COL: { name: "Colombia", flag: "co", code: "COL" },
+  UZB: { name: "Uzbekistan", flag: "uz", code: "UZB" },
+  COD: { name: "DR Congo", flag: "cd", code: "COD" },
+  ENG: { name: "England", flag: "gb-eng", code: "ENG" },
+  CRO: { name: "Croatia", flag: "hr", code: "CRO" },
+  PAN: { name: "Panama", flag: "pa", code: "PAN" },
+  GHA: { name: "Ghana", flag: "gh", code: "GHA" },
+};
+
+function FlagImg({ iso, size = 20 }) {
+  const h = size;
+  const w = Math.round(size * 4 / 3);
+  return (
+    <img
+      src={"https://flagcdn.com/w80/" + iso + ".png"}
+      alt={iso}
+      style={{
+        width: w, height: h, objectFit: "cover",
+        borderRadius: 3, display: "inline-block", verticalAlign: "middle",
+        border: "0.5px solid rgba(255,255,255,0.15)",
+      }}
+      onError={(e) => { e.target.style.display = "none"; }}
+    />
+  );
+}
+
+const GROUPS = {
+  A: ["MEX", "KOR", "RSA", "CZE"],
+  B: ["CAN", "BIH", "QAT", "SUI"],
+  C: ["BRA", "MAR", "HAI", "SCO"],
+  D: ["USA", "PAR", "AUS", "TUR"],
+  E: ["GER", "ECU", "CIV", "CUR"],
+  F: ["NED", "JPN", "SWE", "TUN"],
+  G: ["BEL", "EGY", "IRN", "NZL"],
+  H: ["ESP", "URU", "KSA", "CPV"],
+  I: ["FRA", "SEN", "IRQ", "NOR"],
+  J: ["ARG", "ALG", "AUT", "JOR"],
+  K: ["POR", "COL", "UZB", "COD"],
+  L: ["ENG", "CRO", "PAN", "GHA"],
+};
+
+
+// Group stage schedule with Madrid times (CEST, UTC+2). Source: worldcupwiki.com
+const GROUP_SCHEDULE = [
+  {g:"A",h:"MEX",a:"RSA",d:"2026-06-11T21:00+02:00"},
+  {g:"A",h:"KOR",a:"CZE",d:"2026-06-12T04:00+02:00"},
+  {g:"B",h:"CAN",a:"BIH",d:"2026-06-12T21:00+02:00"},
+  {g:"D",h:"USA",a:"PAR",d:"2026-06-13T03:00+02:00"},
+  {g:"B",h:"QAT",a:"SUI",d:"2026-06-13T21:00+02:00"},
+  {g:"C",h:"BRA",a:"MAR",d:"2026-06-14T00:00+02:00"},
+  {g:"C",h:"HAI",a:"SCO",d:"2026-06-14T03:00+02:00"},
+  {g:"D",h:"AUS",a:"TUR",d:"2026-06-14T06:00+02:00"},
+  {g:"E",h:"GER",a:"CUR",d:"2026-06-14T19:00+02:00"},
+  {g:"F",h:"NED",a:"JPN",d:"2026-06-14T22:00+02:00"},
+  {g:"E",h:"CIV",a:"ECU",d:"2026-06-15T01:00+02:00"},
+  {g:"F",h:"SWE",a:"TUN",d:"2026-06-15T04:00+02:00"},
+  {g:"H",h:"ESP",a:"CPV",d:"2026-06-15T18:00+02:00"},
+  {g:"G",h:"BEL",a:"EGY",d:"2026-06-15T21:00+02:00"},
+  {g:"H",h:"KSA",a:"URU",d:"2026-06-16T00:00+02:00"},
+  {g:"G",h:"IRN",a:"NZL",d:"2026-06-16T03:00+02:00"},
+  {g:"I",h:"FRA",a:"SEN",d:"2026-06-16T21:00+02:00"},
+  {g:"I",h:"IRQ",a:"NOR",d:"2026-06-17T00:00+02:00"},
+  {g:"J",h:"ARG",a:"ALG",d:"2026-06-17T03:00+02:00"},
+  {g:"J",h:"AUT",a:"JOR",d:"2026-06-17T06:00+02:00"},
+  {g:"K",h:"POR",a:"COD",d:"2026-06-17T19:00+02:00"},
+  {g:"L",h:"ENG",a:"CRO",d:"2026-06-17T22:00+02:00"},
+  {g:"L",h:"GHA",a:"PAN",d:"2026-06-18T01:00+02:00"},
+  {g:"K",h:"UZB",a:"COL",d:"2026-06-18T04:00+02:00"},
+  {g:"A",h:"CZE",a:"RSA",d:"2026-06-18T18:00+02:00"},
+  {g:"B",h:"SUI",a:"BIH",d:"2026-06-18T21:00+02:00"},
+  {g:"B",h:"CAN",a:"QAT",d:"2026-06-19T00:00+02:00"},
+  {g:"A",h:"MEX",a:"KOR",d:"2026-06-19T03:00+02:00"},
+  {g:"D",h:"USA",a:"AUS",d:"2026-06-19T21:00+02:00"},
+  {g:"C",h:"SCO",a:"MAR",d:"2026-06-20T00:00+02:00"},
+  {g:"C",h:"BRA",a:"HAI",d:"2026-06-20T02:30+02:00"},
+  {g:"D",h:"TUR",a:"PAR",d:"2026-06-20T05:00+02:00"},
+  {g:"F",h:"NED",a:"SWE",d:"2026-06-20T19:00+02:00"},
+  {g:"E",h:"GER",a:"CIV",d:"2026-06-20T22:00+02:00"},
+  {g:"E",h:"ECU",a:"CUR",d:"2026-06-21T02:00+02:00"},
+  {g:"F",h:"TUN",a:"JPN",d:"2026-06-21T06:00+02:00"},
+  {g:"H",h:"ESP",a:"KSA",d:"2026-06-21T18:00+02:00"},
+  {g:"G",h:"BEL",a:"IRN",d:"2026-06-21T21:00+02:00"},
+  {g:"H",h:"URU",a:"CPV",d:"2026-06-22T00:00+02:00"},
+  {g:"G",h:"EGY",a:"NZL",d:"2026-06-22T03:00+02:00"},
+  {g:"J",h:"ARG",a:"AUT",d:"2026-06-22T19:00+02:00"},
+  {g:"I",h:"FRA",a:"IRQ",d:"2026-06-22T23:00+02:00"},
+  {g:"I",h:"NOR",a:"SEN",d:"2026-06-23T02:00+02:00"},
+  {g:"J",h:"JOR",a:"ALG",d:"2026-06-23T05:00+02:00"},
+  {g:"K",h:"POR",a:"UZB",d:"2026-06-23T19:00+02:00"},
+  {g:"L",h:"ENG",a:"GHA",d:"2026-06-23T22:00+02:00"},
+  {g:"L",h:"PAN",a:"CRO",d:"2026-06-24T01:00+02:00"},
+  {g:"K",h:"COL",a:"COD",d:"2026-06-24T04:00+02:00"},
+  {g:"B",h:"SUI",a:"CAN",d:"2026-06-24T21:00+02:00"},
+  {g:"B",h:"BIH",a:"QAT",d:"2026-06-24T21:00+02:00"},
+  {g:"C",h:"SCO",a:"BRA",d:"2026-06-25T00:00+02:00"},
+  {g:"C",h:"MAR",a:"HAI",d:"2026-06-25T00:00+02:00"},
+  {g:"A",h:"CZE",a:"MEX",d:"2026-06-25T03:00+02:00"},
+  {g:"A",h:"RSA",a:"KOR",d:"2026-06-25T03:00+02:00"},
+  {g:"E",h:"CUR",a:"CIV",d:"2026-06-25T22:00+02:00"},
+  {g:"E",h:"ECU",a:"GER",d:"2026-06-25T22:00+02:00"},
+  {g:"F",h:"JPN",a:"SWE",d:"2026-06-26T01:00+02:00"},
+  {g:"F",h:"TUN",a:"NED",d:"2026-06-26T01:00+02:00"},
+  {g:"D",h:"TUR",a:"USA",d:"2026-06-26T04:00+02:00"},
+  {g:"D",h:"PAR",a:"AUS",d:"2026-06-26T04:00+02:00"},
+  {g:"I",h:"NOR",a:"FRA",d:"2026-06-26T21:00+02:00"},
+  {g:"I",h:"SEN",a:"IRQ",d:"2026-06-26T21:00+02:00"},
+  {g:"H",h:"CPV",a:"KSA",d:"2026-06-27T02:00+02:00"},
+  {g:"H",h:"URU",a:"ESP",d:"2026-06-27T02:00+02:00"},
+  {g:"G",h:"EGY",a:"IRN",d:"2026-06-27T05:00+02:00"},
+  {g:"G",h:"NZL",a:"BEL",d:"2026-06-27T05:00+02:00"},
+  {g:"L",h:"PAN",a:"ENG",d:"2026-06-27T23:00+02:00"},
+  {g:"L",h:"CRO",a:"GHA",d:"2026-06-27T23:00+02:00"},
+  {g:"K",h:"COL",a:"POR",d:"2026-06-28T01:30+02:00"},
+  {g:"K",h:"COD",a:"UZB",d:"2026-06-28T01:30+02:00"},
+  {g:"J",h:"ALG",a:"AUT",d:"2026-06-28T04:00+02:00"},
+  {g:"J",h:"JOR",a:"ARG",d:"2026-06-28T04:00+02:00"},
+];
+
+function getGroupMatches(groupKey) {
+  return GROUP_SCHEDULE
+    .filter((m) => m.g === groupKey)
+    .sort((a, b) => new Date(a.d) - new Date(b.d))
+    .map((m) => ({ home: m.h, away: m.a, date: m.d }));
+}
+
+function formatMatchDate(isoStr) {
+  return new Date(isoStr).toLocaleString("en-GB", {
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+    timeZone: "Europe/Madrid",
+  });
+}
+
+function generateGroupMatches(teamCodes) {
+  const matches = [];
+  for (let i = 0; i < teamCodes.length; i++) {
+    for (let j = i + 1; j < teamCodes.length; j++) {
+      matches.push({ home: teamCodes[i], away: teamCodes[j] });
+    }
+  }
+  return matches;
+}
+
+const ALL_TEAM_CODES = Object.keys(TEAMS);
+
+/* ═══════════════════════════════════════════
+   STORAGE HELPERS
+   ═══════════════════════════════════════════ */
+
+const DB_URL = "https://kyporra-default-rtdb.firebaseio.com";
+
+async function sGet(key) {
+  try {
+    const r = await fetch(DB_URL + "/" + encodeURIComponent(key) + ".json");
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+async function sSet(key, val) {
+  try {
+    await fetch(DB_URL + "/" + encodeURIComponent(key) + ".json", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(val),
+    });
+  } catch (e) { console.error("DB error:", e); }
+}
+
+/* ═══════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════ */
+
+const C = {
+  bg: "#080c1a",
+  card: "#0f1535",
+  cardHover: "#151d45",
+  gold: "#d4a539",
+  goldLight: "#f5d06b",
+  goldDark: "#9a7520",
+  green: "#22c55e",
+  greenDark: "#15803d",
+  red: "#ef4444",
+  blue: "#3b82f6",
+  white: "#f0f0f0",
+  muted: "#8892b0",
+  border: "rgba(212,165,57,0.15)",
+  borderBright: "rgba(212,165,57,0.35)",
+};
+
+const baseStyle = {
+  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+  background: C.bg,
+  color: C.white,
+  minHeight: "100vh",
+};
+
+/* ═══════════════════════════════════════════
+   UTILITY COMPONENTS
+   ═══════════════════════════════════════════ */
+
+function GoldButton({ children, onClick, disabled, style, small }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: disabled ? "#333" : `linear-gradient(135deg, ${C.gold}, ${C.goldDark})`,
+        color: disabled ? "#666" : "#0a0e1a",
+        border: "none",
+        borderRadius: 8,
+        padding: small ? "6px 14px" : "10px 22px",
+        fontWeight: 700,
+        fontSize: small ? 12 : 14,
+        cursor: disabled ? "not-allowed" : "pointer",
+        letterSpacing: 0.5,
+        transition: "all 0.2s",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Card({ children, style, glow }) {
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${glow ? C.borderBright : C.border}`,
+        borderRadius: 12,
+        padding: 20,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Badge({ children, color = C.gold }) {
+  return (
+    <span
+      style={{
+        background: `${color}22`,
+        color,
+        fontSize: 11,
+        fontWeight: 700,
+        padding: "3px 10px",
+        borderRadius: 20,
+        letterSpacing: 0.5,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function TeamBadge({ code, size = "md" }) {
+  const t = TEAMS[code];
+  if (!t) return null;
+  const fs = size === "lg" ? 28 : size === "sm" ? 16 : 20;
+  const ns = size === "lg" ? 14 : size === "sm" ? 10 : 12;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: size === "sm" ? 4 : 8 }}>
+      <FlagImg iso={t.flag} size={fs} />
+      <span style={{ fontSize: ns, fontWeight: 600 }}>{t.name}</span>
+    </div>
+  );
+}
+
+function ScoreInput({ value, onChange, disabled }) {
+  return (
+    <input
+      type="number"
+      min="0"
+      max="20"
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value === "" ? null : parseInt(e.target.value))}
+      disabled={disabled}
+      style={{
+        width: 44,
+        height: 38,
+        textAlign: "center",
+        fontSize: 18,
+        fontWeight: 700,
+        background: disabled ? "#1a1a2e" : "#0a0e27",
+        color: C.white,
+        border: `1px solid ${disabled ? "#333" : C.borderBright}`,
+        borderRadius: 8,
+        outline: "none",
+      }}
+    />
+  );
+}
+
+function TabBar({ tabs, active, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 4, background: "#0a0e1a", borderRadius: 10, padding: 4, marginBottom: 20 }}>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => onChange(t.id)}
+          style={{
+            flex: 1,
+            padding: "10px 8px",
+            background: active === t.id ? C.card : "transparent",
+            color: active === t.id ? C.gold : C.muted,
+            border: active === t.id ? `1px solid ${C.border}` : "1px solid transparent",
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            transition: "all 0.2s",
+          }}
+        >
+          {t.icon}
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   CALCULATION HELPERS
+   ═══════════════════════════════════════════ */
+
+function calcGroupTable(matches, teamCodes) {
+  const table = {};
+  teamCodes.forEach((c) => {
+    table[c] = { code: c, pts: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, played: 0 };
+  });
+  matches.forEach((m) => {
+    if (m.homeScore == null || m.awayScore == null) return;
+    const hs = m.homeScore, as_ = m.awayScore;
+    table[m.home].played++;
+    table[m.away].played++;
+    table[m.home].gf += hs;
+    table[m.home].ga += as_;
+    table[m.away].gf += as_;
+    table[m.away].ga += hs;
+    if (hs > as_) {
+      table[m.home].w++;
+      table[m.home].pts += 3;
+      table[m.away].l++;
+    } else if (hs < as_) {
+      table[m.away].w++;
+      table[m.away].pts += 3;
+      table[m.home].l++;
+    } else {
+      table[m.home].d++;
+      table[m.away].d++;
+      table[m.home].pts += 1;
+      table[m.away].pts += 1;
+    }
+  });
+  Object.values(table).forEach((t) => (t.gd = t.gf - t.ga));
+  const sorted = Object.values(table).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+  return sorted;
+}
+
+function calcUserPoints(userPreds, realResults) {
+  if (!userPreds || !realResults) return { total: 0, breakdown: {} };
+  const P = getPoints(realResults);
+  let total = 0;
+  const breakdown = { exactScores: 0, correctResults: 0, groupAdvance: 0, groupPosition: 0, globals: 0, knockout: 0, koScores: 0 };
+
+  // Group stage match points
+  Object.keys(GROUPS).forEach((g) => {
+    const teamCodes = GROUPS[g];
+    const matches = generateGroupMatches(teamCodes);
+    matches.forEach((m) => {
+      const key = `${g}-${m.home}-${m.away}`;
+      const pred = userPreds?.groups?.[key];
+      const real = realResults?.groups?.[key];
+      if (!pred || !real || pred.home == null || pred.away == null || real.home == null || real.away == null) return;
+      if (pred.home === real.home && pred.away === real.away) {
+        total += P.exactScore;
+        breakdown.exactScores++;
+      } else {
+        const predResult = pred.home > pred.away ? "W" : pred.home < pred.away ? "L" : "D";
+        const realResult = real.home > real.away ? "W" : real.home < real.away ? "L" : "D";
+        if (predResult === realResult) {
+          total += P.correctResult;
+          breakdown.correctResults++;
+        }
+      }
+    });
+
+    // Group position points
+    if (realResults?.groupTables?.[g]) {
+      const realTable = realResults.groupTables[g];
+      const predMatches = matches.map((m) => {
+        const key = `${g}-${m.home}-${m.away}`;
+        const p = userPreds?.groups?.[key];
+        return { ...m, homeScore: p?.home ?? null, awayScore: p?.away ?? null };
+      });
+      const predTable = calcGroupTable(predMatches, teamCodes);
+      
+      realTable.forEach((realTeam, realPos) => {
+        const predPos = predTable.findIndex((t) => t.code === realTeam.code);
+        if (realPos < 2) {
+          if (predPos < 2) {
+            if (predPos === realPos) {
+              total += P.teamExactPosition;
+              breakdown.groupPosition++;
+            } else {
+              total += P.teamAdvancesGroup;
+              breakdown.groupAdvance++;
+            }
+          }
+        }
+      });
+    }
+  });
+
+  // Global predictions
+  if (realResults?.champion && userPreds?.globals?.champion === realResults.champion) {
+    total += P.champion;
+    breakdown.globals++;
+  }
+  if (realResults?.topScorerWinners?.length > 0 && userPreds?.globals?.topScorer) {
+    if (realResults.topScorerWinners.includes(userPreds.globals.topScorer.trim())) {
+      total += P.topScorer;
+      breakdown.globals++;
+    }
+  }
+  if (realResults?.mvpWinners?.length > 0 && userPreds?.globals?.mvp) {
+    if (realResults.mvpWinners.includes(userPreds.globals.mvp.trim())) {
+      total += P.mvp;
+      breakdown.globals++;
+    }
+  }
+
+  // Knockout predictions — new system
+  if (userPreds?.knockout && realResults?.knockout) {
+    Object.entries(userPreds.knockout).forEach(([matchId, pred]) => {
+      const real = realResults.knockout?.[matchId];
+      if (!real || !pred) return;
+      if (pred.home != null && real.home != null && pred.away != null && real.away != null) {
+        const predDraw = pred.home === pred.away;
+        const realDraw = real.home === real.away;
+        if (pred.home === real.home && pred.away === real.away) {
+          // Exact score (including exact draw)
+          total += predDraw ? P.exactDraw : P.exactScore;
+          breakdown.koScores++;
+        } else if (!predDraw && !realDraw) {
+          // Both non-draws: check if same winner
+          const predW = pred.home > pred.away ? "H" : "A";
+          const realW = real.home > real.away ? "H" : "A";
+          if (predW === realW) { total += P.correctResult; breakdown.koScores++; }
+        } else if (predDraw && realDraw) {
+          // Both draws but not exact
+          total += P.drawNotExact; breakdown.koScores++;
+        }
+        // Non-draw pred vs draw real (or vice versa): 0 pts for score
+      }
+      // Advancer bonus (only relevant for draws — for non-draws winner = advancer automatically)
+      if (real.advances && pred.advances === real.advances) {
+        // Only give advancer bonus if user predicted a draw (extra decision)
+        const predDraw2 = pred.home != null && pred.away != null && pred.home === pred.away;
+        if (predDraw2) {
+          total += P.advancer;
+        }
+        breakdown.knockout++;
+      }
+    });
+  }
+
+  return { total, breakdown };
+}
+
+/* ═══════════════════════════════════════════
+   AUTH VIEWS
+   ═══════════════════════════════════════════ */
+
+function LandingView({ onLogin, onRegister, onAdmin, users, allPredictions, realResults }) {
+  const [show, setShow] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  useEffect(() => { setTimeout(() => setShow(true), 100); }, []);
+
+  const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+  const rankings = useMemo(() => {
+    return (users || [])
+      .filter((u) => u.approved)
+      .map((u) => {
+        const preds = allPredictions?.[u.id];
+        const { total } = calcUserPoints(preds, realResults);
+        const bonus = realResults?.bonusPoints?.[u.id] || 0;
+        return { ...u, total: total + bonus };
+      })
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [users, allPredictions, realResults]);
+  const floatFlags = ["br","ar","es","fr","de","pt","nl","be","jp","kr","ma","hr","co","uy","sn","au","eg","se","at","dz"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20, position: "relative", overflow: "hidden" }}>
+      <style>{`
+        @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+        @keyframes glowPulse { 0%, 100% { box-shadow: 0 0 20px rgba(212,165,57,0.15); } 50% { box-shadow: 0 0 40px rgba(212,165,57,0.35); } }
+        @keyframes floatUp {
+          0% { transform: translateY(105vh) rotate(-8deg); opacity: 0; }
+          8% { opacity: 0.45; }
+          92% { opacity: 0.45; }
+          100% { transform: translateY(-60px) rotate(8deg); opacity: 0; }
+        }
+      `}</style>
+      {/* Floating flags background */}
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+        {floatFlags.map((iso, i) => (
+          <img
+            key={i}
+            src={"https://flagcdn.com/w80/" + iso + ".png"}
+            alt=""
+            style={{
+              position: "absolute",
+              left: (3 + (i * 4.8) % 92) + "%",
+              width: 24 + (i % 3) * 8,
+              borderRadius: 3,
+              animation: "floatUp " + (14 + (i % 7) * 2) + "s linear infinite",
+              animationDelay: (i * 1.2) % 12 + "s",
+              opacity: 0,
+            }}
+          />
+        ))}
+      </div>
+      <div style={{
+        textAlign: "center", marginBottom: 40, position: "relative", zIndex: 1,
+        opacity: show ? 1 : 0, transform: show ? "translateY(0)" : "translateY(30px)",
+        transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1)",
+      }}>
+        {/* Host country badges */}
+        <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 20 }}>
+          <FlagImg iso="mx" size={32} />
+          <FlagImg iso="us" size={32} />
+          <FlagImg iso="ca" size={32} />
+        </div>
+        <h1 style={{
+          fontSize: 42, fontWeight: 900, margin: 0, letterSpacing: -1,
+          background: `linear-gradient(135deg, ${C.goldLight}, ${C.gold}, ${C.goldDark}, ${C.goldLight})`,
+          backgroundSize: "200% auto",
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          animation: "shimmer 4s linear infinite",
+        }}>
+          KYPorra 2026
+        </h1>
+        <p style={{ color: C.muted, fontSize: 13, marginTop: 8, letterSpacing: 2, textTransform: "uppercase" }}>
+          World Cup Porra
+        </p>
+      </div>
+      <div style={{
+        display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 320,
+        position: "relative", zIndex: 1,
+        opacity: show ? 1 : 0, transform: show ? "translateY(0)" : "translateY(20px)",
+        transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s",
+      }}>
+        <button
+          onClick={onLogin}
+          style={{
+            width: "100%", padding: "14px 22px", fontSize: 16, fontWeight: 700,
+            background: `linear-gradient(135deg, ${C.gold}, ${C.goldDark})`,
+            color: "#0a0e1a", border: "none", borderRadius: 10, cursor: "pointer",
+            animation: "glowPulse 3s ease-in-out infinite",
+            letterSpacing: 0.5,
+          }}
+        >
+          Log in
+        </button>
+        <button
+          onClick={onRegister}
+          style={{
+            width: "100%", padding: "14px 22px", fontSize: 16, fontWeight: 600,
+            background: "rgba(212,165,57,0.08)", color: C.gold,
+            border: `1px solid ${C.borderBright}`, borderRadius: 10, cursor: "pointer",
+          }}
+        >
+          Sign up
+        </button>
+        <button
+          onClick={onAdmin}
+          style={{
+            marginTop: 24, background: "transparent", color: C.muted,
+            border: "none", fontSize: 12, cursor: "pointer", opacity: 0.6,
+          }}
+        >
+          <Shield size={11} style={{ marginRight: 4, verticalAlign: -1 }} />
+          Admin
+        </button>
+
+        {/* Share button */}
+        <button
+          onClick={() => setShowShare(!showShare)}
+          style={{
+            marginTop: 8, padding: "8px 16px",
+            background: "rgba(59,130,246,0.1)", color: C.blue,
+            border: `1px solid rgba(59,130,246,0.2)`, borderRadius: 8,
+            fontSize: 12, fontWeight: 600, cursor: "pointer",
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}
+        >
+          <ChevronRight size={12} /> Share with colleagues
+        </button>
+        {showShare && (
+          <div style={{
+            marginTop: 6, padding: 10, background: "#0a0e27",
+            borderRadius: 8, border: `1px solid ${C.border}`,
+          }}>
+            <p style={{ fontSize: 11, color: C.muted, margin: "0 0 6px" }}>
+              Copy and share this link:
+            </p>
+            <input
+              type="text"
+              readOnly
+              value={shareUrl}
+              onFocus={(e) => e.target.select()}
+              onClick={(e) => e.target.select()}
+              style={{
+                width: "100%", padding: "8px 10px",
+                background: "#151b3a", color: C.white,
+                border: `1px solid ${C.borderBright}`, borderRadius: 6,
+                fontSize: 11, outline: "none", boxSizing: "border-box",
+              }}
+            />
+            <p style={{ fontSize: 10, color: C.muted, margin: "6px 0 0" }}>
+              Click the link → select all → copy
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Public leaderboard */}
+      {rankings.length > 0 && (
+        <div style={{
+          width: "100%", maxWidth: 360, marginTop: 32, position: "relative", zIndex: 1,
+          opacity: show ? 1 : 0,
+          transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.6s",
+        }}>
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: C.gold, textAlign: "center" }}>
+              🏆 Leaderboard
+            </h3>
+            {rankings.map((r, i) => {
+              const medals = ["#FFD700", "#C0C0C0", "#CD7F32"];
+              return (
+                <div
+                  key={r.id}
+                  style={{
+                    display: "flex", alignItems: "center", padding: "6px 0",
+                    borderBottom: i < rankings.length - 1 ? `1px solid ${C.border}` : "none",
+                  }}
+                >
+                  <span style={{ width: 24, fontSize: 12, fontWeight: 700, color: i < 3 ? medals[i] : C.muted }}>
+                    {i + 1}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{r.name} {r.surname?.charAt(0)}.</span>
+                    <span style={{ fontSize: 10, color: C.muted, marginLeft: 6 }}>{r.team}</span>
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: C.gold }}>{r.total}</span>
+                  <span style={{ fontSize: 9, color: C.muted, marginLeft: 2 }}>pts</span>
+                </div>
+              );
+            })}
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LoginView({ onBack, onSuccess, users }) {
+  const savedEmail = typeof localStorage !== "undefined" ? localStorage.getItem("kyporra_email") || "" : "";
+  const savedPass = typeof localStorage !== "undefined" ? localStorage.getItem("kyporra_pass") || "" : "";
+  const [email, setEmail] = useState(savedEmail);
+  const [pass, setPass] = useState(savedPass);
+  const [error, setError] = useState("");
+
+  const handleLogin = () => {
+    const e = email.trim().toLowerCase();
+    if (!e.endsWith("@expediagroup.com")) {
+      setError("Use your Expedia email (@expediagroup.com)");
+      return;
+    }
+    const user = users.find((u) => u.email === e);
+    if (!user) {
+      setError("Not found. Have you signed up?");
+      return;
+    }
+    if (!user.approved) {
+      setError("Your account is pending approval. You'll receive an email.");
+      return;
+    }
+    if (user.password && user.password !== pass.trim()) {
+      setError("Password incorrecta");
+      return;
+    }
+    // Remember credentials
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("kyporra_email", e);
+      localStorage.setItem("kyporra_pass", pass.trim());
+    }
+    onSuccess(user);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
+      <Card style={{ width: "100%", maxWidth: 400 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 20px", textAlign: "center" }}>
+          ⚽ Log in
+        </h2>
+        <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6 }}>Expedia Email</label>
+        <input
+          type="email"
+          placeholder="name@expediagroup.com"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); setError(""); }}
+          style={{
+            width: "100%", padding: "10px 14px", background: "#0a0e27", color: C.white,
+            border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, outline: "none",
+            marginBottom: 10, boxSizing: "border-box",
+          }}
+        />
+        <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6 }}>Password</label>
+        <input
+          type="password"
+          placeholder="Your password"
+          value={pass}
+          onChange={(e) => { setPass(e.target.value); setError(""); }}
+          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+          style={{
+            width: "100%", padding: "10px 14px", background: "#0a0e27", color: C.white,
+            border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, outline: "none",
+            marginBottom: 4, boxSizing: "border-box",
+          }}
+        />
+        {error && <p style={{ color: C.red, fontSize: 12, margin: "6px 0" }}>{error}</p>}
+        <GoldButton onClick={handleLogin} style={{ width: "100%", marginTop: 12 }}>Log in</GoldButton>
+        <button onClick={onBack} style={{ width: "100%", marginTop: 10, background: "transparent", color: C.muted, border: "none", fontSize: 13, cursor: "pointer" }}>
+          ← Back
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+function RegisterView({ onBack, onSuccess }) {
+  const [form, setForm] = useState({ name: "", surname: "", team: "", email: "", password: "", code: "" });
+  const [error, setError] = useState("");
+
+  const handleRegister = () => {
+    if (!form.name.trim() || !form.surname.trim() || !form.team.trim() || !form.email.trim() || !form.password.trim() || !form.code.trim()) {
+      setError("Fill in all fields");
+      return;
+    }
+    if (!form.email.trim().toLowerCase().endsWith("@expediagroup.com")) {
+      setError("Use your Expedia email (@expediagroup.com)");
+      return;
+    }
+    if (form.code.trim() !== INVITE_CODE) {
+      setError("Invite Code incorrecto");
+      return;
+    }
+    onSuccess({
+      id: Date.now().toString(36),
+      name: form.name.trim(),
+      surname: form.surname.trim(),
+      team: form.team.trim(),
+      email: form.email.trim().toLowerCase(),
+      password: form.password.trim(),
+      approved: false,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  const F = (label, key, placeholder, type = "text") => (
+    <div style={{ marginBottom: 12 }}>
+      <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4 }}>{label}</label>
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={form[key]}
+        onChange={(e) => { setForm({ ...form, [key]: e.target.value }); setError(""); }}
+        style={{
+          width: "100%",
+          padding: "10px 14px",
+          background: "#0a0e27",
+          color: C.white,
+          border: `1px solid ${C.border}`,
+          borderRadius: 8,
+          fontSize: 14,
+          outline: "none",
+          boxSizing: "border-box",
+        }}
+      />
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
+      <Card style={{ width: "100%", maxWidth: 420 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 20px", textAlign: "center" }}>
+          🏟️ Sign up · KYPorra 2026
+        </h2>
+        {F("First Name", "name", "David")}
+        {F("Last Name", "surname", "Rey")}
+        {F("Expedia Team", "team", "B2B Strategy")}
+        {F("Expedia Email", "email", "name@expediagroup.com", "email")}
+        {F("Password", "password", "Choose a password", "password")}
+        {F("Invite Code", "code", "Enter the code")}
+        {error && <p style={{ color: C.red, fontSize: 12, margin: "6px 0" }}>{error}</p>}
+        <GoldButton onClick={handleRegister} style={{ width: "100%", marginTop: 8 }}>Request access</GoldButton>
+        <button onClick={onBack} style={{ width: "100%", marginTop: 10, background: "transparent", color: C.muted, border: "none", fontSize: 13, cursor: "pointer" }}>
+          ← Back
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+function AdminLoginView({ onBack, onSuccess }) {
+  const [pass, setPass] = useState("");
+  const [error, setError] = useState("");
+  const [show, setShow] = useState(false);
+
+  const handleLogin = async () => {
+    const ok = await checkAdminPass(pass);
+    if (ok) onSuccess();
+    else setError("Password incorrecta");
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
+      <Card style={{ width: "100%", maxWidth: 380 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 20px", textAlign: "center" }}>
+          <Shield size={20} style={{ marginRight: 8, color: C.gold }} />
+          Admin
+        </h2>
+        <div style={{ position: "relative" }}>
+          <input
+            type={show ? "text" : "password"}
+            placeholder="Password"
+            value={pass}
+            onChange={(e) => { setPass(e.target.value); setError(""); }}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            style={{
+              width: "100%",
+              padding: "10px 40px 10px 14px",
+              background: "#0a0e27",
+              color: C.white,
+              border: `1px solid ${C.border}`,
+              borderRadius: 8,
+              fontSize: 14,
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+          <button onClick={() => setShow(!show)} style={{ position: "absolute", right: 8, top: 8, background: "none", border: "none", color: C.muted, cursor: "pointer" }}>
+            {show ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        {error && <p style={{ color: C.red, fontSize: 12, margin: "6px 0" }}>{error}</p>}
+        <GoldButton onClick={handleLogin} style={{ width: "100%", marginTop: 12 }}>Access</GoldButton>
+        <button onClick={onBack} style={{ width: "100%", marginTop: 10, background: "transparent", color: C.muted, border: "none", fontSize: 13, cursor: "pointer" }}>
+          ← Back
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+function PendingView({ onBack, user }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20, textAlign: "center" }}>
+      <Card style={{ maxWidth: 400, textAlign: "center" }}>
+        <Clock size={48} style={{ color: C.gold, marginBottom: 16 }} />
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 8px" }}>Registration received!</h2>
+        <p style={{ color: C.muted, fontSize: 14, margin: "0 0 16px" }}>
+          Your request is pending approval. You'll receive an email at <strong style={{ color: C.white }}>{user.email}</strong> when it's ready.
+        </p>
+        <GoldButton onClick={onBack} small>Back to home</GoldButton>
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   MAIN DASHBOARD - GROUP PREDICTIONS
+   ═══════════════════════════════════════════ */
+
+function GroupPredictions({ user, predictions, onSave, realResults }) {
+  const [preds, setPreds] = useState(predictions?.groups || {});
+  const [activeGroup, setActiveGroup] = useState("A");
+  const [saving, setSaving] = useState(false);
+  const locked = isLocked("groups");
+
+  const updateScore = (key, side, val) => {
+    if (locked) return;
+    const newPreds = { ...preds };
+    if (!newPreds[key]) newPreds[key] = { home: null, away: null };
+    newPreds[key] = { ...newPreds[key], [side]: val };
+    setPreds(newPreds);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave({ ...predictions, groups: preds });
+    setSaving(false);
+  };
+
+  const groupKeys = Object.keys(GROUPS);
+  const teamCodes = GROUPS[activeGroup];
+  const matches = getGroupMatches(activeGroup);
+
+  // Calculate predicted table
+  const predMatches = matches.map((m) => {
+    const key = `${activeGroup}-${m.home}-${m.away}`;
+    const pred = preds[key];
+    return { ...m, homeScore: pred?.home ?? 0, awayScore: pred?.away ?? 0 };
+  });
+  const predTable = calcGroupTable(predMatches, teamCodes);
+  const hasEdits = matches.some((m) => {
+    const key = `${activeGroup}-${m.home}-${m.away}`;
+    return preds[key] != null;
+  });
+
+  // Real results table
+  const realTable = realResults?.groupTables?.[activeGroup];
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
+          ⚽ Group Stage
+        </h2>
+        {locked ? (
+          <Badge color={C.red}><Lock size={10} /> LOCKED</Badge>
+        ) : (
+          <GoldButton onClick={handleSave} small disabled={saving}>
+            {saving ? "Saving..." : "💾 Save"}
+          </GoldButton>
+        )}
+      </div>
+
+      {/* Group selector */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+        {groupKeys.map((g) => {
+          const gMatches = generateGroupMatches(GROUPS[g]);
+          const filled = gMatches.every((m) => {
+            const key = `${g}-${m.home}-${m.away}`;
+            return preds[key]?.home != null && preds[key]?.away != null;
+          });
+          return (
+            <button
+              key={g}
+              onClick={() => setActiveGroup(g)}
+              style={{
+                padding: "6px 12px",
+                background: activeGroup === g ? C.gold : "transparent",
+                color: activeGroup === g ? "#0a0e1a" : filled ? C.green : C.muted,
+                border: `1px solid ${activeGroup === g ? C.gold : filled ? C.green + "44" : C.border}`,
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {filled && activeGroup !== g ? "✓ " : ""}Group {g}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Match predictions */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: C.gold }}>Group {activeGroup}</h3>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            {teamCodes.map((c) => (
+              <FlagImg key={c} iso={TEAMS[c].flag} size={18} />
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {matches.map((m) => {
+            const key = `${activeGroup}-${m.home}-${m.away}`;
+            const pred = preds[key] || { home: 0, away: 0 };
+            const real = realResults?.groups?.[key];
+            return (
+              <div
+                key={key}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto 1fr",
+                  alignItems: "center",
+                  padding: "10px 14px",
+                  background: real ? "rgba(34,197,94,0.06)" : "#0a0e27",
+                  borderRadius: 8,
+                  border: real ? `1px solid ${C.green}33` : `1px solid ${C.border}`,
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <TeamBadge code={m.home} size="sm" />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <ScoreInput value={pred.home ?? 0} onChange={(v) => updateScore(key, "home", v)} disabled={locked} />
+                  <span style={{ color: C.muted, fontWeight: 700, fontSize: 12 }}>-</span>
+                  <ScoreInput value={pred.away ?? 0} onChange={(v) => updateScore(key, "away", v)} disabled={locked} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                  <TeamBadge code={m.away} size="sm" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Real results if available */}
+        {realTable && (
+          <div style={{ marginTop: 12, padding: 10, background: "rgba(34,197,94,0.08)", borderRadius: 8 }}>
+            <p style={{ fontSize: 11, color: C.green, fontWeight: 700, margin: "0 0 4px" }}>RESULTADO REAL</p>
+            {matches.map((m) => {
+              const key = `${activeGroup}-${m.home}-${m.away}`;
+              const real = realResults?.groups?.[key];
+              if (!real || real.home == null) return null;
+              return (
+                <div key={key} style={{ fontSize: 12, color: C.muted, display: "flex", gap: 6, alignItems: "center", marginBottom: 2 }}>
+                  <FlagImg iso={TEAMS[m.home].flag} size={12} /> <span>{real.home} - {real.away}</span> <FlagImg iso={TEAMS[m.away].flag} size={12} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* Predicted table */}
+      {/* Predicted table - always visible with 0-0 defaults */}
+      <Card>
+          <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: C.gold }}>
+            📊 Tu tabla predicha · Group {activeGroup}
+          </h3>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ color: C.muted, fontSize: 11 }}>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>#</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Team</th>
+                <th style={{ padding: "4px 6px" }}>J</th>
+                <th style={{ padding: "4px 6px" }}>G</th>
+                <th style={{ padding: "4px 6px" }}>E</th>
+                <th style={{ padding: "4px 6px" }}>P</th>
+                <th style={{ padding: "4px 6px" }}>GF</th>
+                <th style={{ padding: "4px 6px" }}>GC</th>
+                <th style={{ padding: "4px 6px" }}>DG</th>
+                <th style={{ padding: "4px 6px", color: C.gold }}>Pts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {predTable.map((t, i) => {
+                const advances = i < 2;
+                const thirdChance = i === 2;
+                return (
+                  <tr key={t.code} style={{ background: advances ? "rgba(34,197,94,0.08)" : thirdChance ? "rgba(245,208,107,0.08)" : "transparent" }}>
+                    <td style={{ padding: "6px 8px", fontWeight: 700, color: advances ? C.green : thirdChance ? C.gold : C.muted }}>
+                      {i + 1}
+                    </td>
+                    <td style={{ padding: "6px 8px" }}><TeamBadge code={t.code} size="sm" /></td>
+                    <td style={{ padding: "6px", textAlign: "center" }}>{t.played}</td>
+                    <td style={{ padding: "6px", textAlign: "center", color: C.green }}>{t.w}</td>
+                    <td style={{ padding: "6px", textAlign: "center" }}>{t.d}</td>
+                    <td style={{ padding: "6px", textAlign: "center", color: C.red }}>{t.l}</td>
+                    <td style={{ padding: "6px", textAlign: "center" }}>{t.gf}</td>
+                    <td style={{ padding: "6px", textAlign: "center" }}>{t.ga}</td>
+                    <td style={{ padding: "6px", textAlign: "center", color: t.gd > 0 ? C.green : t.gd < 0 ? C.red : C.muted }}>
+                      {t.gd > 0 ? "+" : ""}{t.gd}
+                    </td>
+                    <td style={{ padding: "6px", textAlign: "center", fontWeight: 700, color: C.gold }}>{t.pts}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 11, color: C.muted }}>
+            <span><span style={{ color: C.green }}>●</span> Qualifies directly</span>
+            <span><span style={{ color: C.gold }}>●</span> Possible best 3rd</span>
+          </div>
+        </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   GLOBAL PREDICTIONS
+   ═══════════════════════════════════════════ */
+
+function GlobalPredictions({ predictions, onSave, locked }) {
+  const [globals, setGlobals] = useState(predictions?.globals || { champion: "", topScorer: "", mvp: "" });
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showPicker, setShowPicker] = useState(null);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave({ ...predictions, globals });
+    setSaving(false);
+  };
+
+  const filteredTeams = search
+    ? ALL_TEAM_CODES.filter((c) => TEAMS[c].name.toLowerCase().includes(search.toLowerCase()))
+    : ALL_TEAM_CODES;
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>🏆 Global Predictions</h2>
+        {!locked && (
+          <GoldButton onClick={handleSave} small disabled={saving}>
+            {saving ? "Saving..." : "💾 Save"}
+          </GoldButton>
+        )}
+      </div>
+
+      {/* Champion picker */}
+      <Card style={{ marginBottom: 12 }} glow>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <Trophy size={20} style={{ color: C.gold }} />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>World Cup Champion</span>
+          <Badge>+{DEFAULT_POINTS.champion} pts</Badge>
+        </div>
+        {globals.champion ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <FlagImg iso={TEAMS[globals.champion]?.flag} size={40} />
+            <span style={{ fontSize: 18, fontWeight: 700 }}>{TEAMS[globals.champion]?.name}</span>
+            {!locked && (
+              <button onClick={() => setGlobals({ ...globals, champion: "" })} style={{ marginLeft: "auto", background: "none", border: "none", color: C.red, cursor: "pointer" }}>
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div>
+            <input
+              placeholder="Search team..."
+              value={showPicker === "champion" ? search : ""}
+              onFocus={() => setShowPicker("champion")}
+              onChange={(e) => setSearch(e.target.value)}
+              disabled={locked}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                background: "#0a0e27",
+                color: C.white,
+                border: `1px solid ${C.border}`,
+                borderRadius: 8,
+                fontSize: 13,
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+            {showPicker === "champion" && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, maxHeight: 200, overflowY: "auto" }}>
+                {filteredTeams.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => {
+                      setGlobals({ ...globals, champion: c });
+                      setShowPicker(null);
+                      setSearch("");
+                    }}
+                    style={{
+                      padding: "4px 10px",
+                      background: "#0a0e27",
+                      color: C.white,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 6,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <FlagImg iso={TEAMS[c].flag} size={14} /> {TEAMS[c].name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Top Scorer */}
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <Zap size={20} style={{ color: C.gold }} />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>Top Scorer</span>
+          <Badge>+{DEFAULT_POINTS.topScorer} pts</Badge>
+        </div>
+        <input
+          placeholder="First Name del jugador (ej: Mbappé)"
+          value={globals.topScorer || ""}
+          onChange={(e) => setGlobals({ ...globals, topScorer: e.target.value })}
+          disabled={locked}
+          style={{
+            width: "100%",
+            padding: "10px 14px",
+            background: "#0a0e27",
+            color: C.white,
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            fontSize: 14,
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+      </Card>
+
+      {/* MVP */}
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <Star size={20} style={{ color: C.gold }} />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>Tournament MVP</span>
+          <Badge>+{DEFAULT_POINTS.mvp} pts</Badge>
+        </div>
+        <input
+          placeholder="First Name del jugador (ej: Bellingham)"
+          value={globals.mvp || ""}
+          onChange={(e) => setGlobals({ ...globals, mvp: e.target.value })}
+          disabled={locked}
+          style={{
+            width: "100%",
+            padding: "10px 14px",
+            background: "#0a0e27",
+            color: C.white,
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            fontSize: 14,
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   LEADERBOARD
+   ═══════════════════════════════════════════ */
+
+function Leaderboard({ users, allPredictions, realResults }) {
+  const [expanded, setExpanded] = useState(null);
+
+  const rankings = useMemo(() => {
+    return users
+      .filter((u) => u.approved)
+      .map((u) => {
+        const preds = allPredictions[u.id];
+        const { total, breakdown } = calcUserPoints(preds, realResults);
+        const bonus = realResults?.bonusPoints?.[u.id] || 0;
+        return { ...u, total: total + bonus, bonus, breakdown, hasPreds: !!preds?.groups && Object.keys(preds.groups).length > 0 };
+      })
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  }, [users, allPredictions, realResults]);
+
+  // Group by team
+  const teamRankings = useMemo(() => {
+    const teams = {};
+    rankings.forEach((r) => {
+      if (!teams[r.team]) teams[r.team] = { team: r.team, total: 0, members: 0 };
+      teams[r.team].total += r.total;
+      teams[r.team].members++;
+    });
+    return Object.values(teams).sort((a, b) => b.total - a.total);
+  }, [rankings]);
+
+  const medalColors = ["#FFD700", "#C0C0C0", "#CD7F32"];
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 16px" }}>🏆 Leaderboard</h2>
+
+      {/* Top 3 podium */}
+      {rankings.length >= 3 && (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 8, marginBottom: 20, padding: "0 20px" }}>
+          {[1, 0, 2].map((idx) => {
+            const r = rankings[idx];
+            if (!r) return null;
+            const heights = [140, 100, 80];
+            return (
+              <div key={idx} style={{ textAlign: "center", flex: 1 }}>
+                <div style={{ fontSize: 28, marginBottom: 4 }}>{idx === 0 ? "👑" : ""}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{r.name}</div>
+                <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>{r.team}</div>
+                <div
+                  style={{
+                    height: heights[idx],
+                    background: `linear-gradient(180deg, ${medalColors[idx]}33, ${medalColors[idx]}11)`,
+                    border: `1px solid ${medalColors[idx]}44`,
+                    borderRadius: "8px 8px 0 0",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <span style={{ fontSize: 24, fontWeight: 800, color: medalColors[idx] }}>{r.total}</span>
+                  <span style={{ fontSize: 10, color: C.muted }}>pts</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Full ranking list */}
+      <Card>
+        {rankings.map((r, i) => (
+          <div key={r.id}>
+            <div
+              onClick={() => setExpanded(expanded === r.id ? null : r.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "10px 0",
+                borderBottom: i < rankings.length - 1 ? `1px solid ${C.border}` : "none",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ width: 30, fontSize: 14, fontWeight: 700, color: i < 3 ? medalColors[i] : C.muted }}>
+                {i + 1}
+              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{r.name} {r.surname}</div>
+                <div style={{ fontSize: 11, color: C.muted }}>{r.team}</div>
+              </div>
+              <div style={{ textAlign: "right", marginRight: 8 }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: C.gold }}>{r.total}</div>
+                <div style={{ fontSize: 10, color: C.muted }}>pts</div>
+              </div>
+              {r.hasPreds ? (
+                <Check size={14} style={{ color: C.green }} />
+              ) : (
+                <Clock size={14} style={{ color: C.muted }} />
+              )}
+            </div>
+            {expanded === r.id && (
+              <div style={{ padding: "8px 0 8px 30px", fontSize: 12, color: C.muted }}>
+                <div>Exact scores: <span style={{ color: C.green }}>{r.breakdown.exactScores}</span></div>
+                <div>Correct results: <span style={{ color: C.blue }}>{r.breakdown.correctResults}</span></div>
+                <div>Teams qualified: <span style={{ color: C.gold }}>{r.breakdown.groupAdvance + r.breakdown.groupPosition}</span></div>
+              </div>
+            )}
+          </div>
+        ))}
+        {rankings.length === 0 && (
+          <p style={{ color: C.muted, textAlign: "center", fontSize: 13 }}>No approved participants yet</p>
+        )}
+      </Card>
+
+      {/* Team ranking */}
+      {teamRankings.length > 1 && (
+        <>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: "24px 0 12px", color: C.gold }}>👥 Team Leaderboard</h3>
+          <Card>
+            {teamRankings.map((t, i) => (
+              <div
+                key={t.team}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "8px 0",
+                  borderBottom: i < teamRankings.length - 1 ? `1px solid ${C.border}` : "none",
+                }}
+              >
+                <span style={{ width: 30, fontSize: 13, fontWeight: 700, color: i === 0 ? C.gold : C.muted }}>
+                  {i + 1}
+                </span>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t.team}</div>
+                <div style={{ fontSize: 11, color: C.muted, marginRight: 12 }}>{t.members} members</div>
+                <span style={{ fontSize: 16, fontWeight: 800, color: C.gold }}>{t.total}</span>
+              </div>
+            ))}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   ADMIN PANEL
+   ═══════════════════════════════════════════ */
+
+function AdminPanel({ users, setUsers, realResults, setRealResults, config, setConfig, knockoutSetup }) {
+  const [adminTab, setAdminTab] = useState("users");
+  const [resultGroup, setResultGroup] = useState("A");
+
+  const pendingUsers = users.filter((u) => !u.approved);
+  const approvedUsers = users.filter((u) => u.approved);
+
+  const approveUser = async (id) => {
+    const newUsers = users.map((u) => (u.id === id ? { ...u, approved: true } : u));
+    setUsers(newUsers);
+    await sSet("wc-users", newUsers);
+    // Open mailto for notification
+    const user = newUsers.find((u) => u.id === id);
+    if (user) {
+      const subject = encodeURIComponent("✅ KYPorra 2026 — You're in!");
+      const body = encodeURIComponent(`¡Hola ${user.name}!\n\nYour KYPorra 2026 account has been approved. You can now log in and make your predictions.\n\nGood luck! ⚽🏆`);
+      window.open(`mailto:${user.email}?subject=${subject}&body=${body}`, "_blank");
+    }
+  };
+
+  const rejectUser = async (id) => {
+    const newUsers = users.filter((u) => u.id !== id);
+    setUsers(newUsers);
+    await sSet("wc-users", newUsers);
+  };
+
+  const updateResult = (key, side, val) => {
+    const newResults = { ...realResults };
+    if (!newResults.groups) newResults.groups = {};
+    if (!newResults.groups[key]) newResults.groups[key] = { home: null, away: null };
+    newResults.groups[key] = { ...newResults.groups[key], [side]: val };
+    setRealResults(newResults);
+  };
+
+  const saveResults = async () => {
+    // Calculate group tables from results
+    const newResults = { ...realResults };
+    if (!newResults.groupTables) newResults.groupTables = {};
+    Object.keys(GROUPS).forEach((g) => {
+      const teamCodes = GROUPS[g];
+      const matches = generateGroupMatches(teamCodes);
+      const withScores = matches.map((m) => {
+        const key = `${g}-${m.home}-${m.away}`;
+        return { ...m, homeScore: newResults.groups?.[key]?.home ?? null, awayScore: newResults.groups?.[key]?.away ?? null };
+      });
+      const allDone = withScores.every((m) => m.homeScore != null && m.awayScore != null);
+      if (allDone) {
+        newResults.groupTables[g] = calcGroupTable(withScores, teamCodes);
+      }
+    });
+    setRealResults(newResults);
+    await sSet("wc-results", newResults);
+    alert("✅ Results saved");
+  };
+
+  const allEmails = approvedUsers.map((u) => u.email).join(",");
+
+  const openMailAll = (subject, body) => {
+    const s = encodeURIComponent(subject);
+    const b = encodeURIComponent(body);
+    window.open(`mailto:${allEmails}?subject=${s}&body=${b}`, "_blank");
+  };
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 16px" }}>
+        <Shield size={18} style={{ color: C.gold, marginRight: 8 }} />
+        Admin Panel
+      </h2>
+
+      <TabBar
+        tabs={[
+          { id: "users", label: `Users (${pendingUsers.length})`, icon: <Users size={14} /> },
+          { id: "results", label: "Results", icon: <Zap size={14} /> },
+          { id: "comms", label: "Comms", icon: <Mail size={14} /> },
+          { id: "settings", label: "Config", icon: <Shield size={14} /> },
+        ]}
+        active={adminTab}
+        onChange={setAdminTab}
+      />
+
+      {adminTab === "users" && (
+        <div>
+          {pendingUsers.length > 0 && (
+            <Card style={{ marginBottom: 16 }} glow>
+              <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: C.gold }}>
+                ⏳ Pending approval ({pendingUsers.length})
+              </h3>
+              {pendingUsers.map((u) => (
+                <div
+                  key={u.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 0",
+                    borderBottom: `1px solid ${C.border}`,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{u.name} {u.surname}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{u.team} · {u.email} · 🔑 {u.password || "—"}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => approveUser(u.id)}
+                      style={{ background: C.green, color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      <Check size={12} /> Approve
+                    </button>
+                    <button
+                      onClick={() => rejectUser(u.id)}
+                      style={{ background: C.red, color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      <X size={12} /> Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </Card>
+          )}
+
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>
+              ✅ Approved ({approvedUsers.length})
+            </h3>
+            {approvedUsers.map((u) => (
+              <div
+                key={u.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 0",
+                  borderBottom: `1px solid ${C.border}`,
+                  fontSize: 13,
+                }}
+              >
+                <div>
+                  <span style={{ fontWeight: 600 }}>{u.name} {u.surname}</span>
+                  <span style={{ color: C.muted, marginLeft: 8, fontSize: 11 }}>{u.team}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 11, color: C.muted }}>{u.email}</div>
+                    <div style={{ fontSize: 10, color: C.gold }}>🔑 {u.password || "no password"}</div>
+                  </div>
+                  <button
+                    onClick={() => { if (confirm("Delete " + u.name + " " + u.surname + "?")) rejectUser(u.id); }}
+                    style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12, opacity: 0.6 }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+
+      {adminTab === "results" && (
+        <div>
+          {/* API Import Button */}
+          <Card style={{ marginBottom: 16, background: "#0d1230" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, margin: "0 0 2px" }}>📡 Import today's results</p>
+                <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>Fetch finished matches from API</p>
+              </div>
+              <button
+                onClick={async () => {
+                  const apiKey = typeof localStorage !== "undefined" ? localStorage.getItem("kyporra_api_key") : null;
+                  if (!apiKey) {
+                    alert("⚠️ Introduce tu API key en la pestaña Config primero.");
+                    return;
+                  }
+                  try {
+                    const resp = await fetch("https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED", {
+                      headers: { "X-Auth-Token": apiKey }
+                    });
+                    if (!resp.ok) throw new Error("API " + resp.status);
+                    const data = await resp.json();
+                    const matches = data.matches || [];
+                    if (matches.length === 0) {
+                      alert("No finished matches yet.");
+                      return;
+                    }
+                    const newResults = { ...realResults };
+                    if (!newResults.groups) newResults.groups = {};
+                    if (!newResults.knockout) newResults.knockout = {};
+                    let importedGroups = 0;
+                    let importedKO = 0;
+                    const tlaMap = {};
+                    Object.values(TEAMS).forEach((t) => { tlaMap[t.code] = t.code; });
+
+                    // Stage name mapping from API to our round keys
+                    const stageMap = {
+                      "LAST_32": "r32", "ROUND_OF_32": "r32",
+                      "LAST_16": "r16", "ROUND_OF_16": "r16",
+                      "QUARTER_FINALS": "qf", "QUARTER_FINAL": "qf",
+                      "SEMI_FINALS": "sf", "SEMI_FINAL": "sf",
+                      "THIRD_PLACE": "third",
+                      "FINAL": "final",
+                    };
+
+                    matches.forEach((m) => {
+                      if (!m.score?.fullTime || m.score.fullTime.home == null) return;
+                      const homeCode = tlaMap[m.homeTeam?.tla];
+                      const awayCode = tlaMap[m.awayTeam?.tla];
+                      if (!homeCode || !awayCode) return;
+
+                      const stage = m.stage || "";
+
+                      // GROUP STAGE
+                      if (stage === "GROUP_STAGE") {
+                        const groupEntry = Object.entries(GROUPS).find(([g, teams]) =>
+                          teams.includes(homeCode) && teams.includes(awayCode)
+                        );
+                        if (!groupEntry) return;
+                        const key = groupEntry[0] + "-" + homeCode + "-" + awayCode;
+                        const keyAlt = groupEntry[0] + "-" + awayCode + "-" + homeCode;
+                        if (newResults.groups[key]?.home != null) return;
+                        if (GROUPS[groupEntry[0]].indexOf(homeCode) < GROUPS[groupEntry[0]].indexOf(awayCode)) {
+                          newResults.groups[key] = { home: m.score.fullTime.home, away: m.score.fullTime.away };
+                        } else {
+                          newResults.groups[keyAlt] = { home: m.score.fullTime.away, away: m.score.fullTime.home };
+                        }
+                        importedGroups++;
+                        return;
+                      }
+
+                      // KNOCKOUT STAGES
+                      const roundKey = stageMap[stage];
+                      if (!roundKey) return;
+                      const roundInfo = ROUNDS.find((r) => r.key === roundKey);
+                      if (!roundInfo) return;
+
+                      // Find the matching slot by checking team assignments
+                      let matched = false;
+                      for (let i = 1; i <= roundInfo.matches; i++) {
+                        const matchId = roundKey + "-" + i;
+                        if (newResults.knockout[matchId]?.advances) continue; // already filled
+                        const teams = getKnockoutTeam(matchId, knockoutSetup, newResults.knockout);
+                        if (!teams.home || !teams.away) continue;
+                        if ((teams.home === homeCode && teams.away === awayCode) ||
+                            (teams.home === awayCode && teams.away === homeCode)) {
+                          const isFlipped = teams.home === awayCode;
+                          const hs = isFlipped ? m.score.fullTime.away : m.score.fullTime.home;
+                          const as_ = isFlipped ? m.score.fullTime.home : m.score.fullTime.away;
+                          // Determine who advances (winner, or penalties winner)
+                          let advances = null;
+                          if (hs > as_) advances = teams.home;
+                          else if (as_ > hs) advances = teams.away;
+                          else {
+                            // Draw at 90min — check penalties/extra time
+                            const pen = m.score?.penalties;
+                            const et = m.score?.extraTime;
+                            if (pen?.home != null) {
+                              const penHome = isFlipped ? pen.away : pen.home;
+                              const penAway = isFlipped ? pen.home : pen.away;
+                              advances = penHome > penAway ? teams.home : teams.away;
+                            } else if (et?.home != null) {
+                              const etHome = isFlipped ? et.away : et.home;
+                              const etAway = isFlipped ? et.home : et.away;
+                              if (etHome > etAway) advances = teams.home;
+                              else if (etAway > etHome) advances = teams.away;
+                            }
+                          }
+                          newResults.knockout[matchId] = { home: hs, away: as_, advances };
+                          importedKO++;
+                          matched = true;
+                          break;
+                        }
+                      }
+                    });
+
+                    // Recalculate group tables
+                    if (!newResults.groupTables) newResults.groupTables = {};
+                    Object.keys(GROUPS).forEach((g) => {
+                      const teamCodes = GROUPS[g];
+                      const gMatches = generateGroupMatches(teamCodes);
+                      const withScores = gMatches.map((gm) => {
+                        const key = g + "-" + gm.home + "-" + gm.away;
+                        return { ...gm, homeScore: newResults.groups?.[key]?.home ?? null, awayScore: newResults.groups?.[key]?.away ?? null };
+                      });
+                      const allDone = withScores.every((gm) => gm.homeScore != null && gm.awayScore != null);
+                      if (allDone) newResults.groupTables[g] = calcGroupTable(withScores, teamCodes);
+                    });
+
+                    setRealResults(newResults);
+                    alert("✅ Imported: " + importedGroups + " group + " + importedKO + " knockout. Review and Save.");
+                  } catch (e) {
+                    alert("⚠️ Error: " + e.message + ". You can enter results manually.");
+                  }
+                }}
+                style={{
+                  padding: "8px 16px", background: "rgba(59,130,246,0.15)", color: C.blue,
+                  border: `1px solid ${C.blue}33`, borderRadius: 8, fontSize: 12,
+                  fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                🔄 Import
+              </button>
+            </div>
+          </Card>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            {Object.keys(GROUPS).map((g) => (
+              <button
+                key={g}
+                onClick={() => setResultGroup(g)}
+                style={{
+                  padding: "6px 12px",
+                  background: resultGroup === g ? C.gold : "transparent",
+                  color: resultGroup === g ? "#0a0e1a" : C.muted,
+                  border: `1px solid ${resultGroup === g ? C.gold : C.border}`,
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Group {g}
+              </button>
+            ))}
+          </div>
+
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: C.gold }}>
+              Real results · Group {resultGroup}
+            </h3>
+            {generateGroupMatches(GROUPS[resultGroup]).map((m) => {
+              const key = `${resultGroup}-${m.home}-${m.away}`;
+              const res = realResults?.groups?.[key] || { home: null, away: null };
+              return (
+                <div
+                  key={key}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto 1fr",
+                    alignItems: "center",
+                    padding: "8px 0",
+                    borderBottom: `1px solid ${C.border}`,
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <TeamBadge code={m.home} size="sm" />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <ScoreInput value={res.home} onChange={(v) => updateResult(key, "home", v)} />
+                    <span style={{ color: C.muted, fontWeight: 700, fontSize: 12 }}>-</span>
+                    <ScoreInput value={res.away} onChange={(v) => updateResult(key, "away", v)} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                    <TeamBadge code={m.away} size="sm" />
+                  </div>
+                </div>
+              );
+            })}
+            <GoldButton onClick={saveResults} style={{ width: "100%", marginTop: 16 }}>
+              💾 Save resultados
+            </GoldButton>
+          </Card>
+        </div>
+      )}
+
+      {adminTab === "comms" && (
+        <div>
+          <Card style={{ marginBottom: 12 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 8px" }}>📧 Email all participants</h3>
+            <p style={{ fontSize: 12, color: C.muted, margin: "0 0 12px" }}>
+              Outlook will open with {approvedUsers.length} recipients in To:
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <GoldButton
+                onClick={() => openMailAll(
+                  "⚽ KYPorra 2026 — New results!",
+                  "Hi team!\n\nWorld Cup prediction results have been updated. Check the leaderboard.\n\n🏆 Good luck!"
+                )}
+                style={{ width: "100%" }}
+              >
+                📊 Notify new results
+              </GoldButton>
+              <GoldButton
+                onClick={() => openMailAll(
+                  "⏰ KYPorra 2026 — Submit your predictions!",
+                  "Hi team!\n\nReminder: the deadline for group stage predictions is approaching. Don't miss out!\n\n⚽ Enter KYPorra 2026 now"
+                )}
+                style={{ width: "100%" }}
+              >
+                ⏰ Prediction reminder
+              </GoldButton>
+              <GoldButton
+                onClick={() => openMailAll(
+                  "🏆 KYPorra 2026 — ¡Knockout stage is open!",
+                  "Hi team!\n\nGroup stage is over. You can now make your knockout predictions.\n\nMay the best win! 🎯"
+                )}
+                style={{ width: "100%" }}
+              >
+                🎯 Announce new phase
+              </GoldButton>
+            </div>
+          </Card>
+
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 8px" }}>📋 Email list</h3>
+            <div style={{ background: "#0a0e27", padding: 10, borderRadius: 6, fontSize: 11, color: C.muted, wordBreak: "break-all" }}>
+              {allEmails || "No approved users"}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {adminTab === "settings" && (
+        <div>
+          <Card style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>⏰ Prediction Windows</h3>
+            {DEADLINES_INFO.map((d) => {
+              const closed = isLocked(d.key);
+              return (
+                <div key={d.key} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "8px 0", borderBottom: "1px solid " + C.border,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{d.label}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{formatDeadline(d.date)}</div>
+                  </div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+                    background: closed ? C.red + "22" : C.green + "22",
+                    color: closed ? C.red : C.green,
+                  }}>
+                    {closed ? "LOCKED" : "OPEN"}
+                  </span>
+                </div>
+              );
+            })}
+          </Card>
+          <Card style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>🎯 Points Configuration</h3>
+            <p style={{ fontSize: 11, color: C.muted, margin: "0 0 10px" }}>
+              Change point values. All scores recalculate instantly for all users.
+            </p>
+            {(() => {
+              const P = realResults?.customPoints || DEFAULT_POINTS;
+              const updatePts = async (key, val) => {
+                const newPts = { ...P, [key]: parseInt(val) || 0 };
+                const newResults = { ...realResults, customPoints: newPts };
+                setRealResults(newResults);
+                await sSet("wc-results", newResults);
+              };
+              const fields = [
+                ["exactScore", "Exact score (groups & knockout)"],
+                ["correctResult", "Correct winner/draw (groups & KO)"],
+                ["exactDraw", "Exact draw at 90min (KO only)"],
+                ["drawNotExact", "Draw but wrong score (KO only)"],
+                ["advancer", "Correct advancer bonus (KO draws)"],
+                ["teamAdvancesGroup", "Team qualifies from group"],
+                ["teamExactPosition", "Exact group position (1st/2nd)"],
+                ["champion", "World Cup Champion"],
+                ["topScorer", "Top Scorer"],
+                ["mvp", "Tournament MVP"],
+              ];
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {fields.map(([key, label]) => (
+                    <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", background: "#0a0e27", borderRadius: 6 }}>
+                      <span style={{ fontSize: 12, color: C.muted }}>{label}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="number" value={P[key] ?? 0} onChange={(e) => updatePts(key, e.target.value)}
+                          style={{ width: 50, padding: "4px 6px", background: "#151b3a", color: C.gold, border: "1px solid " + C.border, borderRadius: 4, fontSize: 13, textAlign: "center", fontWeight: 700 }} />
+                        <span style={{ fontSize: 11, color: C.muted }}>pts</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </Card>
+          <Card style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>⚙️ General</h3>
+            <div style={{ fontSize: 12, color: C.muted }}>
+              <p>Approved participants: <strong style={{ color: C.white }}>{approvedUsers.length}</strong></p>
+              <p>Pending participants: <strong style={{ color: C.gold }}>{pendingUsers.length}</strong></p>
+            </div>
+          </Card>
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>📡 Results API</h3>
+            <p style={{ fontSize: 11, color: C.muted, margin: "0 0 8px" }}>
+              Your football-data.org API key. Stored only in your browser.
+            </p>
+            <input
+              type="password"
+              placeholder="Paste your API key here"
+              defaultValue={typeof localStorage !== "undefined" ? localStorage.getItem("kyporra_api_key") || "" : ""}
+              onChange={(e) => { if (typeof localStorage !== "undefined") localStorage.setItem("kyporra_api_key", e.target.value.trim()); }}
+              style={{
+                width: "100%", padding: "8px 12px",
+                background: "#0a0e27", color: C.white,
+                border: `1px solid ${C.border}`, borderRadius: 8,
+                fontSize: 13, boxSizing: "border-box",
+              }}
+            />
+            <p style={{ fontSize: 10, color: C.muted, margin: "6px 0 0" }}>
+              Free at football-data.org/client/register
+            </p>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   KNOCKOUT PREDICTIONS
+   ═══════════════════════════════════════════ */
+
+const ROUNDS = [
+  { key: "r32", label: "Round of 32", matches: 16, deadline: "r32" },
+  { key: "r16", label: "Round of 16", matches: 8, deadline: "r32" },
+  { key: "qf", label: "Quarter-finals", matches: 4, deadline: "quarters" },
+  { key: "sf", label: "Semi-finals", matches: 2, deadline: "quarters" },
+  { key: "third", label: "3rd Place", matches: 1, deadline: "quarters" },
+  { key: "final", label: "Final", matches: 1, deadline: "quarters" },
+];
+
+// Which deadline window does each round belong to
+const ROUND_WINDOW = { r32: "r32", r16: "r32", qf: "quarters", sf: "quarters", third: "quarters", final: "quarters" };
+
+function getAdvancer(matchId, koPreds, realKo) {
+  // If the round of this match is in a locked window AND we have real results, use real
+  const round = matchId.split("-")[0];
+  const window = ROUND_WINDOW[round];
+  if (realKo && isLocked(window) && realKo[matchId]?.advances) {
+    return realKo[matchId].advances;
+  }
+  const pred = koPreds?.[matchId];
+  return pred?.advances || null;
+}
+
+function getKnockoutTeam(matchId, knockoutSetup, koPreds, realKo) {
+  // Admin overrides for any round
+  const round = matchId.split("-")[0];
+  const idx = parseInt(matchId.split("-")[1]) - 1;
+  if (knockoutSetup?.[round]?.[idx]?.home) {
+    return { home: knockoutSetup[round][idx].home, away: knockoutSetup[round][idx].away };
+  }
+  // R32: always from admin setup
+  if (round === "r32") {
+    const m = knockoutSetup?.r32?.[idx];
+    return { home: m?.home || null, away: m?.away || null };
+  }
+  const roundMap = { "r16": "r32", "qf": "r16", "sf": "qf", "final": "sf", "third": "sf" };
+  if (matchId === "final-1") {
+    return { home: getAdvancer("sf-1", koPreds, realKo), away: getAdvancer("sf-2", koPreds, realKo) };
+  }
+  if (matchId === "third-1") {
+    const sf1Teams = getKnockoutTeam("sf-1", knockoutSetup, koPreds, realKo);
+    const sf1Adv = getAdvancer("sf-1", koPreds, realKo);
+    const sf1Loser = sf1Adv === sf1Teams.home ? sf1Teams.away : sf1Teams.home;
+    const sf2Teams = getKnockoutTeam("sf-2", knockoutSetup, koPreds, realKo);
+    const sf2Adv = getAdvancer("sf-2", koPreds, realKo);
+    const sf2Loser = sf2Adv === sf2Teams.home ? sf2Teams.away : sf2Teams.home;
+    return { home: sf1Loser || null, away: sf2Loser || null };
+  }
+  const prevRound = roundMap[round];
+  const prevId1 = prevRound + "-" + (idx * 2 + 1);
+  const prevId2 = prevRound + "-" + (idx * 2 + 2);
+  return { home: getAdvancer(prevId1, koPreds, realKo), away: getAdvancer(prevId2, koPreds, realKo) };
+}
+
+function KnockoutPredictions({ predictions, onSave, knockoutSetup, realResults }) {
+  const realKo = realResults?.knockout || {};
+  const [koPreds, setKoPreds] = useState(predictions?.knockout || {});
+  const [activeRound, setActiveRound] = useState("r32");
+  const [saving, setSaving] = useState(false);
+
+  const updateMatch = (matchId, field, val) => {
+    const roundKey = matchId.split("-")[0];
+    const deadlineKey = ROUNDS.find((r) => r.key === roundKey)?.deadline;
+    if (isLocked(deadlineKey)) return;
+    const current = koPreds[matchId] || { home: 0, away: 0, advances: null };
+    const updated = { ...current, [field]: val };
+    if (field === "home" || field === "away") {
+      const h = field === "home" ? val : (updated.home ?? 0);
+      const a = field === "away" ? val : (updated.away ?? 0);
+      if (h > a) {
+        const teams = getKnockoutTeam(matchId, knockoutSetup, koPreds, realKo);
+        updated.advances = teams.home;
+      } else if (a > h) {
+        const teams = getKnockoutTeam(matchId, knockoutSetup, koPreds, realKo);
+        updated.advances = teams.away;
+      } else {
+        const teams = getKnockoutTeam(matchId, knockoutSetup, koPreds, realKo);
+        if (updated.advances !== teams.home && updated.advances !== teams.away) {
+          updated.advances = null;
+        }
+      }
+    }
+    const newPreds = { ...koPreds, [matchId]: updated };
+    // Clear invalid downstream
+    const roundOrder = ["r32", "r16", "qf", "sf", "final", "third"];
+    const changedRound = matchId.split("-")[0];
+    const changedIdx = roundOrder.indexOf(changedRound);
+    roundOrder.slice(changedIdx + 1).forEach((rd) => {
+      const count = ROUNDS.find((r) => r.key === rd)?.matches || 0;
+      for (let i = 1; i <= count; i++) {
+        const mid = rd + "-" + i;
+        const dep = getKnockoutTeam(mid, knockoutSetup, newPreds);
+        const curr = newPreds[mid];
+        if (curr?.advances && curr.advances !== dep.home && curr.advances !== dep.away) {
+          delete newPreds[mid];
+        }
+      }
+    });
+    setKoPreds(newPreds);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave({ ...predictions, knockout: koPreds });
+    setSaving(false);
+  };
+
+  const hasR32Setup = knockoutSetup?.r32?.length > 0 && knockoutSetup.r32.some((m) => m.home);
+  if (!hasR32Setup) {
+    return (
+      <Card style={{ textAlign: "center", padding: 30 }}>
+        <span style={{ fontSize: 40 }}>🏟️</span>
+        <h3 style={{ fontSize: 16, fontWeight: 700, margin: "12px 0 6px" }}>Knockout Stage</h3>
+        <p style={{ color: C.muted, fontSize: 13 }}>Brackets will be available once the group stage ends and the admin sets up the matchups.</p>
+        {!isLocked("groups") && (<p style={{ color: C.gold, fontSize: 12, marginTop: 8 }}>⏰ First complete your group stage predictions</p>)}
+      </Card>
+    );
+  }
+
+  const round = ROUNDS.find((r) => r.key === activeRound);
+  const deadlineKey = round?.deadline;
+  const locked = isLocked(deadlineKey);
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>🏟️ Knockout</h2>
+        {!locked && (<GoldButton onClick={handleSave} small disabled={saving}>{saving ? "Saving..." : "💾 Save"}</GoldButton>)}
+      </div>
+      {!locked && deadlineKey && (
+        <div style={{ background: "rgba(212,165,57,0.1)", border: "1px solid rgba(212,165,57,0.25)", borderRadius: 8, padding: "8px 14px", marginBottom: 12, fontSize: 12 }}>
+          <span style={{ color: C.gold, fontWeight: 700 }}>⏰ Deadline:</span>
+          <span style={{ color: C.muted, marginLeft: 6 }}>{formatDeadline(DEADLINES[deadlineKey])}</span>
+        </div>
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+        {ROUNDS.map((r) => {
+          const filled = Array.from({ length: r.matches }, (_, i) => koPreds[r.key + "-" + (i + 1)]?.advances).filter(Boolean).length;
+          return (<button key={r.key} onClick={() => setActiveRound(r.key)} style={{
+            padding: "6px 10px", background: activeRound === r.key ? C.gold : "transparent",
+            color: activeRound === r.key ? "#0a0e1a" : filled === r.matches ? C.green : C.muted,
+            border: "1px solid " + (activeRound === r.key ? C.gold : filled === r.matches ? C.green + "44" : C.border),
+            borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+          }}>{filled === r.matches && activeRound !== r.key ? "✓ " : ""}{r.label}</button>);
+        })}
+      </div>
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: C.gold }}>{round.label}</h3>
+          <Badge>Exact {getPoints(realResults).exactScore} / Draw {getPoints(realResults).exactDraw} pts</Badge>
+          {locked && <Badge color={C.red}>LOCKED</Badge>}
+        </div>
+        <p style={{ fontSize: 11, color: C.muted, margin: "0 0 12px" }}>Enter the 90-min result. If it's a draw, pick who advances (ET/penalties) for a bonus point.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {Array.from({ length: round.matches }, (_, i) => {
+            const matchId = round.key + "-" + (i + 1);
+            const teams = getKnockoutTeam(matchId, knockoutSetup, koPreds, realKo);
+            const pred = koPreds[matchId] || { home: 0, away: 0, advances: null };
+            const bothTeams = teams.home && teams.away;
+            const isDraw = pred.home != null && pred.away != null && pred.home === pred.away;
+            return (
+              <div key={matchId} style={{ padding: "10px 14px", background: "#0a0e27", borderRadius: 8, border: "1px solid " + (pred.advances ? C.green + "44" : C.border), opacity: bothTeams ? 1 : 0.4 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}><TeamBadge code={teams.home} size="sm" /></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <ScoreInput value={pred.home ?? 0} onChange={(v) => bothTeams && updateMatch(matchId, "home", v)} disabled={!bothTeams || locked} />
+                    <span style={{ color: C.muted, fontWeight: 700, fontSize: 12 }}>-</span>
+                    <ScoreInput value={pred.away ?? 0} onChange={(v) => bothTeams && updateMatch(matchId, "away", v)} disabled={!bothTeams || locked} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-start" }}><TeamBadge code={teams.away} size="sm" /></div>
+                </div>
+                {isDraw && bothTeams && (
+                  <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px solid " + C.border }}>
+                    <span style={{ fontSize: 11, color: C.gold, alignSelf: "center" }}>Who advances?</span>
+                    {[teams.home, teams.away].map((t) => (
+                      <button key={t} onClick={() => !locked && updateMatch(matchId, "advances", t)} disabled={locked} style={{
+                        padding: "4px 10px", borderRadius: 6, fontSize: 11, cursor: locked ? "default" : "pointer",
+                        background: pred.advances === t ? C.green + "22" : "transparent",
+                        border: pred.advances === t ? "2px solid " + C.green : "1px solid " + C.border,
+                        color: pred.advances === t ? C.green : C.muted, fontWeight: 600,
+                      }}><TeamBadge code={t} size="sm" /></button>
+                    ))}
+                  </div>
+                )}
+                {pred.advances && !isDraw && (
+                  <div style={{ textAlign: "center", marginTop: 6, fontSize: 11, color: C.green }}>✓ Advances: {TEAMS[pred.advances]?.name}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   ADMIN KNOCKOUT SETUP
+   ═══════════════════════════════════════════ */
+
+function TeamPicker({ value, onChange, label }) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const team = value ? TEAMS[value] : null;
+  const filtered = search
+    ? ALL_TEAM_CODES.filter((c) => TEAMS[c].name.toLowerCase().includes(search.toLowerCase()) || c.toLowerCase().includes(search.toLowerCase()))
+    : ALL_TEAM_CODES;
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width: "100%", padding: "6px 8px", background: "#0a0e27", color: team ? C.white : C.muted,
+          border: "1px solid " + C.border, borderRadius: 6, fontSize: 12, cursor: "pointer",
+          textAlign: "left", display: "flex", alignItems: "center", gap: 4,
+        }}
+      >
+        {team ? <><TeamBadge code={value} size="sm" /></> : (label || "Select...")}
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
+          background: "#0f1535", border: "1px solid " + C.borderBright, borderRadius: 8,
+          maxHeight: 200, overflowY: "auto", marginTop: 2,
+        }}>
+          <input
+            autoFocus
+            placeholder="Search team..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: "100%", padding: "8px", background: "#0a0e27", color: C.white,
+              border: "none", borderBottom: "1px solid " + C.border, fontSize: 12,
+              outline: "none", boxSizing: "border-box",
+            }}
+          />
+          <button onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+            style={{ width: "100%", padding: "6px 8px", background: "transparent", color: C.muted, border: "none", fontSize: 11, cursor: "pointer", textAlign: "left" }}>
+            — Empty —
+          </button>
+          {filtered.map((c) => (
+            <button key={c} onClick={() => { onChange(c); setOpen(false); setSearch(""); }}
+              style={{
+                width: "100%", padding: "5px 8px", background: value === c ? C.gold + "22" : "transparent",
+                color: C.white, border: "none", fontSize: 12, cursor: "pointer", textAlign: "left",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+              <TeamBadge code={c} size="sm" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminKnockoutSetup({ knockoutSetup, setKnockoutSetup, realResults, setRealResults }) {
+  const [setup, setSetup] = useState(knockoutSetup || { r32: Array.from({ length: 16 }, () => ({ home: "", away: "" })) });
+  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("brackets");
+  const [bracketRound, setBracketRound] = useState("r32");
+  const [koResultRound, setKoResultRound] = useState("r32");
+
+  const updateMatch = (idx, side, val) => {
+    const newR32 = [...(setup.r32 || [])];
+    if (!newR32[idx]) newR32[idx] = { home: "", away: "" };
+    newR32[idx] = { ...newR32[idx], [side]: val };
+    setSetup({ ...setup, r32: newR32 });
+  };
+
+  const updateMatchAny = (round, idx, side, val) => {
+    const arr = [...(setup[round] || Array.from({ length: ROUNDS.find((r) => r.key === round)?.matches || 0 }, () => ({ home: "", away: "" })))];
+    if (!arr[idx]) arr[idx] = { home: "", away: "" };
+    arr[idx] = { ...arr[idx], [side]: val };
+    setSetup({ ...setup, [round]: arr });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setKnockoutSetup(setup);
+    await sSet("wc-knockout", setup);
+    setSaving(false);
+    alert("✅ Brackets guardados");
+  };
+
+  // Knockout real results
+  const koResults = realResults?.knockout || {};
+
+  const getKoMatchTeams = (matchId) => {
+    return getKnockoutTeam(matchId, setup, koResults, koResults);
+  };
+
+  const updateKoResult = (matchId, field, val) => {
+    const current = koResults[matchId] || { home: 0, away: 0, advances: null };
+    const updated = { ...current, [field]: val };
+    if (field === "home" || field === "away") {
+      const h = field === "home" ? val : (updated.home ?? 0);
+      const a = field === "away" ? val : (updated.away ?? 0);
+      const teams = getKoMatchTeams(matchId);
+      if (h > a) updated.advances = teams.home;
+      else if (a > h) updated.advances = teams.away;
+      else if (updated.advances !== teams.home && updated.advances !== teams.away) updated.advances = null;
+    }
+    const newKo = { ...koResults, [matchId]: updated };
+    setRealResults({ ...realResults, knockout: newKo });
+  };
+
+  const saveKoResults = async () => {
+    await sSet("wc-results", realResults);
+    alert("✅ Knockout results saved");
+  };
+
+  const roundInfo = ROUNDS.find((r) => r.key === koResultRound);
+
+  return (
+    <div>
+      <TabBar
+        tabs={[
+          { id: "brackets", label: "Brackets 16avos", icon: <Zap size={14} /> },
+          { id: "results", label: "KO Results", icon: <Trophy size={14} /> },
+        ]}
+        active={activeTab}
+        onChange={setActiveTab}
+      />
+
+      {activeTab === "brackets" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div />
+            <GoldButton onClick={handleSave} small disabled={saving}>
+              {saving ? "Saving..." : "💾 Save cruces"}
+            </GoldButton>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+            {ROUNDS.map((r) => (
+              <button key={r.key} onClick={() => setBracketRound(r.key)} style={{
+                padding: "6px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                background: bracketRound === r.key ? C.gold : "transparent",
+                color: bracketRound === r.key ? "#0a0e1a" : C.muted,
+                border: "1px solid " + (bracketRound === r.key ? C.gold : C.border),
+              }}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 6px", color: C.gold }}>
+              🏟️ Brackets · {ROUNDS.find((r) => r.key === bracketRound)?.label}
+            </h3>
+            {bracketRound === "r32" ? (
+              <p style={{ fontSize: 11, color: C.muted, margin: "0 0 12px" }}>
+                Set up the 16 R32 matches. Search by name or code.
+              </p>
+            ) : (
+              <p style={{ fontSize: 11, color: C.muted, margin: "0 0 12px" }}>
+                Auto-generated from results. Use selectors to fix if needed.
+              </p>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {Array.from({ length: ROUNDS.find((r) => r.key === bracketRound)?.matches || 0 }, (_, i) => {
+                const matchId = bracketRound + "-" + (i + 1);
+                // For r32: from setup. For others: auto from results but overridable
+                const autoTeams = bracketRound !== "r32" ? getKnockoutTeam(matchId, setup, realResults?.knockout || {}, realResults?.knockout) : null;
+                const override = setup[bracketRound]?.[i];
+                const homeVal = override?.home || autoTeams?.home || "";
+                const awayVal = override?.away || autoTeams?.away || "";
+                return (
+                  <div key={i} style={{
+                    display: "grid", gridTemplateColumns: "20px 1fr 30px 1fr", alignItems: "center", gap: 6,
+                    padding: "4px 0", borderBottom: "1px solid " + C.border,
+                  }}>
+                    <span style={{ fontSize: 10, color: C.muted }}>{i + 1}</span>
+                    <TeamPicker value={homeVal} onChange={(v) => updateMatchAny(bracketRound, i, "home", v)} />
+                    <span style={{ color: C.muted, fontSize: 11, textAlign: "center" }}>vs</span>
+                    <TeamPicker value={awayVal} onChange={(v) => updateMatchAny(bracketRound, i, "away", v)} />
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "results" && (
+        <div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            {ROUNDS.map((r) => (
+              <button key={r.key} onClick={() => setKoResultRound(r.key)} style={{
+                padding: "6px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                background: koResultRound === r.key ? C.gold : "transparent",
+                color: koResultRound === r.key ? "#0a0e1a" : C.muted,
+                border: "1px solid " + (koResultRound === r.key ? C.gold : C.border),
+              }}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+          {/* API Import for knockout */}
+          <Card style={{ marginBottom: 12, background: "#0d1230" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, margin: "0 0 2px" }}>📡 Import from API</p>
+                <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>Fetch knockout results</p>
+              </div>
+              <button
+                onClick={async () => {
+                  const apiKey = typeof localStorage !== "undefined" ? localStorage.getItem("kyporra_api_key") : null;
+                  if (!apiKey) { alert("⚠️ Enter your API key in Admin > Config first."); return; }
+                  try {
+                    const resp = await fetch("https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED", {
+                      headers: { "X-Auth-Token": apiKey }
+                    });
+                    if (!resp.ok) throw new Error("API " + resp.status);
+                    const data = await resp.json();
+                    const apiMatches = data.matches || [];
+                    const stageMap = {
+                      "LAST_32":"r32","ROUND_OF_32":"r32","LAST_16":"r16","ROUND_OF_16":"r16",
+                      "QUARTER_FINALS":"qf","QUARTER_FINAL":"qf","SEMI_FINALS":"sf","SEMI_FINAL":"sf",
+                      "THIRD_PLACE":"third","FINAL":"final",
+                    };
+                    const tlaMap = {};
+                    Object.values(TEAMS).forEach((t) => { tlaMap[t.code] = t.code; });
+                    const newKo = { ...koResults };
+                    let imp = 0;
+                    apiMatches.forEach((am) => {
+                      if (!am.score?.fullTime || am.score.fullTime.home == null) return;
+                      const rk = stageMap[am.stage || ""];
+                      if (!rk) return;
+                      const hc = tlaMap[am.homeTeam?.tla], ac = tlaMap[am.awayTeam?.tla];
+                      if (!hc || !ac) return;
+                      const ri = ROUNDS.find((r) => r.key === rk);
+                      if (!ri) return;
+                      for (let i = 1; i <= ri.matches; i++) {
+                        const mid = rk + "-" + i;
+                        if (newKo[mid]?.advances) continue;
+                        const t = getKnockoutTeam(mid, setup, newKo, newKo);
+                        if (!t.home || !t.away) continue;
+                        if ((t.home===hc&&t.away===ac)||(t.home===ac&&t.away===hc)) {
+                          const fl = t.home===ac;
+                          const hs = fl?am.score.fullTime.away:am.score.fullTime.home;
+                          const as2 = fl?am.score.fullTime.home:am.score.fullTime.away;
+                          let adv = null;
+                          if (hs>as2) adv=t.home; else if (as2>hs) adv=t.away;
+                          else { const p=am.score?.penalties,e=am.score?.extraTime;
+                            if(p?.home!=null){const ph=fl?p.away:p.home,pa=fl?p.home:p.away;adv=ph>pa?t.home:t.away;}
+                            else if(e?.home!=null){const eh=fl?e.away:e.home,ea=fl?e.home:e.away;if(eh>ea)adv=t.home;else if(ea>eh)adv=t.away;}
+                          }
+                          newKo[mid]={home:hs,away:as2,advances:adv}; imp++; break;
+                        }
+                      }
+                    });
+                    setRealResults({...realResults, knockout:newKo});
+                    alert("✅ "+imp+" matches imported. Review and Save.");
+                  } catch(e) { alert("⚠️ Error: "+e.message+". Enter results manually."); }
+                }}
+                style={{
+                  padding: "8px 16px", background: "rgba(59,130,246,0.15)", color: C.blue,
+                  border: "1px solid rgba(59,130,246,0.2)", borderRadius: 8, fontSize: 12,
+                  fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                🔄 Import
+              </button>
+            </div>
+          </Card>
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: C.gold }}>
+              Real results · {roundInfo?.label}
+            </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {Array.from({ length: roundInfo?.matches || 0 }, (_, i) => {
+                const matchId = koResultRound + "-" + (i + 1);
+                const teams = getKoMatchTeams(matchId);
+                const res = koResults[matchId] || { home: null, away: null, advances: null };
+                const bothTeams = teams.home && teams.away;
+                const isDraw = res.home != null && res.away != null && res.home === res.away;
+                return (
+                  <div key={matchId} style={{
+                    padding: "10px 14px", background: "#0a0e27", borderRadius: 8,
+                    border: "1px solid " + (res.advances ? C.green + "44" : C.border),
+                    opacity: bothTeams ? 1 : 0.4,
+                  }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        {teams.home ? <TeamBadge code={teams.home} size="sm" /> : <span style={{ color: C.muted, fontSize: 11 }}>—</span>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <ScoreInput value={res.home} onChange={(v) => bothTeams && updateKoResult(matchId, "home", v)} disabled={!bothTeams} />
+                        <span style={{ color: C.muted, fontWeight: 700, fontSize: 12 }}>-</span>
+                        <ScoreInput value={res.away} onChange={(v) => bothTeams && updateKoResult(matchId, "away", v)} disabled={!bothTeams} />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                        {teams.away ? <TeamBadge code={teams.away} size="sm" /> : <span style={{ color: C.muted, fontSize: 11 }}>—</span>}
+                      </div>
+                    </div>
+                    {isDraw && bothTeams && (
+                      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px solid " + C.border }}>
+                        <span style={{ fontSize: 11, color: C.gold }}>Who advances?</span>
+                        {[teams.home, teams.away].map((t) => (
+                          <button key={t} onClick={() => updateKoResult(matchId, "advances", t)} style={{
+                            padding: "4px 10px", borderRadius: 6, fontSize: 11, cursor: "pointer",
+                            background: res.advances === t ? C.green + "22" : "transparent",
+                            border: res.advances === t ? "2px solid " + C.green : "1px solid " + C.border,
+                            color: res.advances === t ? C.green : C.muted, fontWeight: 600,
+                          }}><TeamBadge code={t} size="sm" /></button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <GoldButton onClick={saveKoResults} style={{ width: "100%", marginTop: 16 }}>
+              💾 Save resultados
+            </GoldButton>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════
+   USER DASHBOARD
+   ═══════════════════════════════════════════ */
+
+function PointsSystem({ realResults }) {
+  const P = getPoints(realResults);
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 16px" }}>📋 Points System</h2>
+      <Card style={{ marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px", color: C.gold }}>⚽ Group Stage</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          {[
+            ["Exact score (e.g. 2-1)", P.exactScore + " pts", C.green],
+            ["Correct winner/draw", P.correctResult + " pts", C.blue],
+            ["Team qualifies from group", P.teamAdvancesGroup + " pts", C.gold],
+            ["Exact position (1st/2nd)", P.teamExactPosition + " pts", C.gold],
+          ].map(([label, pts, color]) => (
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "#0a0e27", borderRadius: 6 }}>
+              <span style={{ color: C.muted }}>{label}</span>
+              <span style={{ color, fontWeight: 700 }}>{pts}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card style={{ marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px", color: C.gold }}>🏆 Global Predictions</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          {[
+            ["World Cup Champion", P.champion + " pts"],
+            ["Top Scorer", P.topScorer + " pts"],
+            ["Tournament MVP", P.mvp + " pts"],
+          ].map(([label, pts]) => (
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "#0a0e27", borderRadius: 6 }}>
+              <span style={{ color: C.muted }}>{label}</span>
+              <span style={{ color: C.gold, fontWeight: 700 }}>{pts}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card style={{ marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px", color: C.gold }}>🏟️ Knockout (per match, all rounds)</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          {[
+            ["Exact score at 90 min (non-draw)", P.exactScore + " pts"],
+            ["Correct winner (wrong score)", P.correctResult + " pts"],
+            ["Exact draw at 90 min (e.g. 1-1 = 1-1)", P.exactDraw + " pts"],
+            ["Draw but wrong score (e.g. 0-0 vs 1-1)", P.drawNotExact + " pts"],
+            ["Correct advancer (draw + penalties/ET)", "+" + P.advancer + " pt bonus"],
+          ].map(([label, pts]) => (
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "#0a0e27", borderRadius: 6 }}>
+              <span style={{ color: C.muted }}>{label}</span>
+              <span style={{ color: C.gold, fontWeight: 700 }}>{pts}</span>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
+          In knockout: if you predict a non-draw, the winner advances automatically. If you predict a draw, you choose who advances (penalties/extra time) for a bonus point.
+        </p>
+      </Card>
+      <Card>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px", color: C.gold }}>⏰ Prediction Windows</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          {DEADLINES_INFO.map((d) => (
+            <div key={d.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#0a0e27", borderRadius: 6 }}>
+              <span style={{ color: C.muted }}>{d.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: isLocked(d.key) ? C.red : C.green }}>
+                {formatDeadline(d.date)} — {isLocked(d.key) ? "LOCKED" : "OPEN"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function UserDashboard({ user, onLogout, users, allPredictions, realResults, config, knockoutSetup }) {
+  const [tab, setTab] = useState("groups");
+  const [predictions, setPredictions] = useState(allPredictions[user.id] || {});
+
+  const savePredictions = async (newPreds) => {
+    setPredictions(newPreds);
+    await sSet(`wc-pred-${user.id}`, newPreds);
+  };
+
+  const { total } = calcUserPoints(predictions, realResults);
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto", padding: 16 }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: C.gold }}>KYPorra 2026 ⚽</h1>
+          <p style={{ color: C.muted, fontSize: 12, margin: "2px 0 0" }}>
+            {user.name} {user.surname} · {user.team}
+          </p>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: C.gold }}>{total}</div>
+          <div style={{ fontSize: 10, color: C.muted }}>points</div>
+          <button onClick={onLogout} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, marginTop: 4 }}>
+            <LogOut size={10} /> Log out
+          </button>
+        </div>
+      </div>
+
+      {/* Next deadline banner */}
+      {DEADLINES_INFO.filter((d) => !isLocked(d.key)).slice(0, 1).map((d) => (
+        <div key={d.key} style={{ background: "rgba(212,165,57,0.1)", border: "1px solid rgba(212,165,57,0.25)", borderRadius: 8, padding: "8px 14px", marginBottom: 16, fontSize: 12 }}>
+          <span style={{ color: C.gold, fontWeight: 700 }}>⏰ Next deadline:</span>
+          <span style={{ color: C.white, marginLeft: 6, fontWeight: 600 }}>{d.label}</span>
+          <span style={{ color: C.muted, marginLeft: 6 }}>{formatDeadline(d.date)}</span>
+        </div>
+      ))}
+
+      {/* Prediction tabs - grouped */}
+      <div style={{ marginBottom: 6 }}>
+        <div style={{ display: "flex", gap: 4, background: "#0a0e1a", borderRadius: 10, padding: 4 }}>
+          {[
+            { id: "groups", label: "Groups", icon: <Zap size={14} /> },
+            { id: "globals", label: "Globals", icon: <Star size={14} /> },
+          ].map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              flex: 1, padding: "10px 8px",
+              background: tab === t.id ? C.card : "transparent",
+              color: tab === t.id ? C.gold : C.muted,
+              border: tab === t.id ? "1px solid " + C.border : "1px solid transparent",
+              borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}>{t.icon}{t.label}</button>
+          ))}
+        </div>
+        {!isLocked("groups") && (
+          <p style={{ fontSize: 10, color: C.gold, textAlign: "center", margin: "4px 0 0", opacity: 0.7 }}>
+            ↑ Fill these first before {formatDeadline(DEADLINES.groups)}
+          </p>
+        )}
+      </div>
+      <TabBar
+        tabs={[
+          { id: "knockout", label: "Knockout", icon: <Trophy size={14} /> },
+          { id: "leaderboard", label: "Ranking", icon: <Crown size={14} /> },
+          { id: "points", label: "Points", icon: <Award size={14} /> },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
+      {tab === "groups" && (
+        <GroupPredictions
+          user={user}
+          predictions={predictions}
+          onSave={savePredictions}
+          realResults={realResults}
+        />
+      )}
+      {tab === "knockout" && (
+        <KnockoutPredictions
+          predictions={predictions}
+          onSave={savePredictions}
+          knockoutSetup={knockoutSetup}
+          realResults={realResults}
+        />
+      )}
+      {tab === "globals" && (
+        <GlobalPredictions
+          predictions={predictions}
+          onSave={savePredictions}
+          locked={isLocked("groups")}
+        />
+      )}
+      {tab === "leaderboard" && (
+        <Leaderboard
+          users={users}
+          allPredictions={{ ...allPredictions, [user.id]: predictions }}
+          realResults={realResults}
+        />
+      )}
+      {tab === "points" && <PointsSystem realResults={realResults} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   ADMIN AWARDS RESOLUTION
+   ═══════════════════════════════════════════ */
+
+function AdminAwardsResolution({ users, allPredictions, realResults, setRealResults }) {
+  const approved = users.filter((u) => u.approved);
+
+  // Collect all unique predictions for scorer and mvp
+  const scorerPreds = {};
+  const mvpPreds = {};
+  approved.forEach((u) => {
+    const g = allPredictions[u.id]?.globals;
+    if (g?.topScorer) {
+      const key = g.topScorer.trim();
+      if (!scorerPreds[key]) scorerPreds[key] = [];
+      scorerPreds[key].push(u.name);
+    }
+    if (g?.mvp) {
+      const key = g.mvp.trim();
+      if (!mvpPreds[key]) mvpPreds[key] = [];
+      mvpPreds[key].push(u.name);
+    }
+  });
+
+  const markWinners = async (field, names) => {
+    const newResults = { ...realResults, [field]: names };
+    setRealResults(newResults);
+    await sSet("wc-results", newResults);
+  };
+
+  const renderSection = (title, emoji, field, preds) => {
+    const winners = realResults?.[field] || [];
+    return (
+      <Card style={{ marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px" }}>{emoji} {title}</h3>
+        <p style={{ fontSize: 11, color: C.muted, margin: "0 0 8px" }}>
+          Mark all correct name variants. Each matched user will receive the points.
+        </p>
+        {Object.keys(preds).length === 0 ? (
+          <p style={{ color: C.muted, fontSize: 12 }}>No predictions yet</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {Object.entries(preds).sort((a, b) => b[1].length - a[1].length).map(([name, users_]) => {
+              const isWinner = winners.includes(name);
+              return (
+                <div key={name} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "6px 10px", borderRadius: 6,
+                  background: isWinner ? C.green + "15" : "#0a0e27",
+                  border: isWinner ? `1px solid ${C.green}44` : `1px solid ${C.border}`,
+                }}>
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{name}</span>
+                    <span style={{ fontSize: 10, color: C.muted, marginLeft: 8 }}>({users_.length}: {users_.join(", ")})</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const newWinners = isWinner ? winners.filter((w) => w !== name) : [...winners, name];
+                      markWinners(field, newWinners);
+                    }}
+                    style={{
+                      padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      background: isWinner ? C.green : "transparent",
+                      color: isWinner ? "#fff" : C.muted,
+                      border: isWinner ? "none" : `1px solid ${C.border}`,
+                    }}
+                  >
+                    {isWinner ? "✓ Correct" : "Mark"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 16px" }}>🏅 Award Resolution</h2>
+      <Card style={{ marginBottom: 12, background: "#0d1230" }}>
+        <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+          Users write names freely for scorer and MVP. Here you see all variants
+          and mark which are correct (ej. "Mbappé", "Kylian Mbappé" y "Mbappe" pueden ser todos correctos).
+        </p>
+      </Card>
+      {renderSection("Top Scorer", "⚽", "topScorerWinners", scorerPreds)}
+      {renderSection("Tournament MVP", "⭐", "mvpWinners", mvpPreds)}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   ADMIN MANUAL POINTS
+   ═══════════════════════════════════════════ */
+
+function AdminManualPoints({ users, realResults, setRealResults }) {
+  const approved = users.filter((u) => u.approved);
+  const bonuses = realResults?.bonusPoints || {};
+
+  const updateBonus = async (userId, val) => {
+    const newResults = { ...realResults, bonusPoints: { ...bonuses, [userId]: parseInt(val) || 0 } };
+    setRealResults(newResults);
+    await sSet("wc-results", newResults);
+  };
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 16px" }}>🔧 Ajuste manual de points</h2>
+      <Card style={{ marginBottom: 12, background: "#0d1230" }}>
+        <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+          Add or subtract points manually for any user. Use as fallback if something breaks. Points are added to the auto-calculated total.
+        </p>
+      </Card>
+      <Card>
+        {approved.map((u) => (
+          <div key={u.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid " + C.border }}>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{u.name} {u.surname}</span>
+              <span style={{ fontSize: 10, color: C.muted, marginLeft: 8 }}>{u.team}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, color: C.muted }}>Bonus:</span>
+              <input
+                type="number"
+                value={bonuses[u.id] || 0}
+                onChange={(e) => updateBonus(u.id, e.target.value)}
+                style={{ width: 60, padding: "4px 8px", background: "#0a0e27", color: C.white, border: "1px solid " + C.border, borderRadius: 6, fontSize: 13, textAlign: "center" }}
+              />
+              <span style={{ fontSize: 11, color: C.muted }}>pts</span>
+            </div>
+          </div>
+        ))}
+        {approved.length === 0 && <p style={{ color: C.muted, fontSize: 12 }}>No approved users</p>}
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   ADMIN DASHBOARD WRAPPER
+   ═══════════════════════════════════════════ */
+
+function AdminDashboardWrapper({ onLogout, users, setUsers, realResults, setRealResults, config, setConfig, allPredictions, knockoutSetup, setKnockoutSetup }) {
+  const [tab, setTab] = useState("admin");
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto", padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: C.gold }}>KYPorra 2026 ⚽</h1>
+          <p style={{ color: C.muted, fontSize: 12, margin: "2px 0 0" }}>
+            <Shield size={10} /> Admin Panel
+          </p>
+        </div>
+        <button onClick={onLogout} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12 }}>
+          <LogOut size={12} /> Log out
+        </button>
+      </div>
+
+      <TabBar
+        tabs={[
+          { id: "admin", label: "Admin", icon: <Shield size={14} /> },
+          { id: "knockout", label: "Brackets", icon: <Zap size={14} /> },
+          { id: "awards", label: "Awards", icon: <Award size={14} /> },
+          { id: "bonus", label: "Adjustments", icon: <Zap size={14} /> },
+          { id: "leaderboard", label: "Ranking", icon: <Crown size={14} /> },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
+      {tab === "admin" && (
+        <AdminPanel
+          users={users}
+          setUsers={setUsers}
+          realResults={realResults}
+          setRealResults={setRealResults}
+          config={config}
+          setConfig={setConfig}
+          knockoutSetup={knockoutSetup}
+        />
+      )}
+      {tab === "knockout" && (
+        <AdminKnockoutSetup
+          knockoutSetup={knockoutSetup}
+          setKnockoutSetup={setKnockoutSetup}
+          realResults={realResults}
+          setRealResults={setRealResults}
+        />
+      )}
+      {tab === "awards" && (
+        <AdminAwardsResolution
+          users={users}
+          allPredictions={allPredictions}
+          realResults={realResults}
+          setRealResults={setRealResults}
+        />
+      )}
+      {tab === "bonus" && (
+        <AdminManualPoints
+          users={users}
+          realResults={realResults}
+          setRealResults={setRealResults}
+        />
+      )}
+      {tab === "leaderboard" && (
+        <Leaderboard
+          users={users}
+          allPredictions={allPredictions}
+          realResults={realResults}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   MAIN APP
+   ═══════════════════════════════════════════ */
+
+function App() {
+  const [view, setView] = useState("landing");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [allPredictions, setAllPredictions] = useState({});
+  const [realResults, setRealResults] = useState({});
+  const [config, setConfig] = useState({});
+  const [knockoutSetup, setKnockoutSetup] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Load data function (reusable for refresh)
+  const loadData = useCallback(async (initial = false) => {
+    try {
+      const [u, r, c, ko] = await Promise.all([
+        sGet("wc-users"),
+        sGet("wc-results"),
+        sGet("wc-config"),
+        sGet("wc-knockout"),
+      ]);
+      if (u) setUsers(u);
+      if (r) setRealResults(r);
+      if (c) setConfig(c);
+      if (ko) setKnockoutSetup(ko);
+
+      // Load all predictions
+      if (u && u.length > 0) {
+        const preds = {};
+        for (const user of u) {
+          const p = await sGet(`wc-pred-${user.id}`);
+          if (p) preds[user.id] = p;
+        }
+        setAllPredictions(preds);
+      }
+    } catch (e) {
+      console.error("Load error:", e);
+    }
+    if (initial) {
+      setLoading(false);
+      // Auto-restore admin session
+      if (typeof localStorage !== "undefined" && localStorage.getItem("kyporra_admin") === "1") {
+        setIsAdmin(true);
+        setView("admin");
+      }
+      // Auto-restore user session
+      else if (typeof localStorage !== "undefined" && localStorage.getItem("kyporra_email")) {
+        const savedEmail = localStorage.getItem("kyporra_email");
+        const savedPass = localStorage.getItem("kyporra_pass") || "";
+        const loadedUsers = u || [];
+        const savedUser = loadedUsers.find((usr) => usr.email === savedEmail && usr.approved);
+        if (savedUser && (!savedUser.password || savedUser.password === savedPass)) {
+          setCurrentUser(savedUser);
+          setView("dashboard");
+        }
+      }
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => { loadData(true); }, []);
+
+  // Auto-refresh when user returns to tab
+  useEffect(() => {
+    const onFocus = () => { if (!loading) loadData(false); };
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") onFocus();
+    });
+    return () => document.removeEventListener("visibilitychange", onFocus);
+  }, [loading, loadData]);
+
+  const handleRegister = async (newUser) => {
+    const existing = users.find((u) => u.email === newUser.email);
+    if (existing) {
+      setCurrentUser(existing);
+      if (existing.approved) setView("dashboard");
+      else setView("pending");
+      return;
+    }
+    const newUsers = [...users, newUser];
+    setUsers(newUsers);
+    await sSet("wc-users", newUsers);
+    setCurrentUser(newUser);
+    setView("pending");
+  };
+
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    setView("dashboard");
+  };
+
+  const handleAdminLogin = () => {
+    setIsAdmin(true);
+    setView("admin");
+    if (typeof localStorage !== "undefined") localStorage.setItem("kyporra_admin", "1");
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsAdmin(false);
+    setView("landing");
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("kyporra_admin");
+      localStorage.removeItem("kyporra_email");
+      localStorage.removeItem("kyporra_pass");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ ...baseStyle, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <style>{`@keyframes spinLoad { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 12, animation: "spinLoad 2s linear infinite", display: "inline-block" }}>⚽</div>
+          <p style={{ color: C.gold, fontWeight: 600, letterSpacing: 1 }}>Loading KYPorra 2026...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={baseStyle}>
+      {view === "landing" && (
+        <LandingView
+          onLogin={() => setView("login")}
+          onRegister={() => setView("register")}
+          onAdmin={() => setView("adminLogin")}
+          users={users}
+          allPredictions={allPredictions}
+          realResults={realResults}
+        />
+      )}
+      {view === "login" && (
+        <LoginView
+          onBack={() => setView("landing")}
+          onSuccess={handleLogin}
+          users={users}
+        />
+      )}
+      {view === "register" && (
+        <RegisterView
+          onBack={() => setView("landing")}
+          onSuccess={handleRegister}
+        />
+      )}
+      {view === "adminLogin" && (
+        <AdminLoginView
+          onBack={() => setView("landing")}
+          onSuccess={handleAdminLogin}
+        />
+      )}
+      {view === "pending" && (
+        <PendingView onBack={() => setView("landing")} user={currentUser} />
+      )}
+      {view === "dashboard" && currentUser && (
+        <UserDashboard
+          user={currentUser}
+          onLogout={handleLogout}
+          users={users}
+          allPredictions={allPredictions}
+          realResults={realResults}
+          config={config}
+          knockoutSetup={knockoutSetup}
+        />
+      )}
+      {view === "admin" && (
+        <AdminDashboardWrapper
+          onLogout={handleLogout}
+          users={users}
+          setUsers={setUsers}
+          realResults={realResults}
+          setRealResults={setRealResults}
+          config={config}
+          setConfig={setConfig}
+          allPredictions={allPredictions}
+          knockoutSetup={knockoutSetup}
+          setKnockoutSetup={setKnockoutSetup}
+        />
+      )}
+    </div>
+  );
+}
+
+
+function Footer() {
+  return (
+    <div style={{ position: "fixed", bottom: 8, right: 12, fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "'Segoe UI', system-ui, sans-serif", letterSpacing: 0.5 }}>
+      powered by <span style={{ color: "rgba(212,165,57,0.4)", fontWeight: 600 }}>David Rey</span>
+    </div>
+  );
+}
+
+function Root() {
+  return (<><App /><Footer /></>);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
+</script>
+</body>
+</html>
